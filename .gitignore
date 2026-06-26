@@ -63,3 +63,4 @@ build-*/
 .idea/
 /cmake-build-*/
 mod.json
+__pycache__
