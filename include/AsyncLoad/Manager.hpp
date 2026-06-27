@@ -16,9 +16,9 @@ struct AL_DLL ImageLoadParams {
     geode::ZStringView path;
     bool isFullPath = false;
 
-    /// The byte vector to use for loading the image, in a format like PNG or WEBP (support depends on whether ImagePlus is installed).
+    /// The byte chunk to use for loading the image, in a format like PNG or WEBP (support depends on whether ImagePlus is installed).
     /// If this is not empty, then this is used over the path.
-    std::vector<uint8_t> data;
+    CachedBufferChunk data;
 
     Callback callback;
 };
@@ -59,7 +59,7 @@ struct AL_DLL SpriteFramesLoadParams {
 
     /// The raw data of the plist file.
     /// On Apple systems, this is assumed to be a binary plist format. Everywhere else, it is XML data.
-    std::vector<uint8_t> data;
+    CachedBufferChunk data;
 
     Callback callback;
 };

@@ -28,6 +28,10 @@ public:
         return m_fence;
     }
 
+    operator bool() const {
+        return m_pbo != 0;
+    }
+
     void destroy();
 
     /// Creates a synchronization fence, does nothing if unsupported or if a fence already exists.

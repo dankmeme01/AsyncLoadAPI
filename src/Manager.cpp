@@ -147,10 +147,16 @@ struct ALManager::Impl : CCObject {
                 // task needs to continue running but does not require the main thread, so push it back to the worker threads
                 m_taskQueue.push(std::move(task));
             }
+
+            // avoid blocking for too long at once, even if a ton of tasks are queued
+            // we want to try and avoid huge lag spikes
+            if (start.elapsed().millis() > 10) {
+                break;
+            }
         }
 
         auto taken = start.elapsed();
-        if (taken.millis() > 10) {
+        if (taken.millis() > 20) {
             log::warn("ALManager::update took {}", taken);
         } else if (taken.millis() > 2) {
             AL_TRACE("ALManager::update took {}", taken);

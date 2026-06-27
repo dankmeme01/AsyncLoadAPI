@@ -1,5 +1,6 @@
 #pragma once
 #include "Util.hpp"
+#include "BufferCache.hpp"
 #include <Geode/utils/ZStringView.hpp>
 #include <memory>
 
@@ -16,7 +17,7 @@ AL_DLL gd::string getPathForFilename(std::string_view filename, std::string_view
 AL_DLL gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix = false);
 
 /// Rewrite of CCFileUtils::getFileData, fast and thread safe, and with good error reporting.
-AL_DLL geode::Result<std::vector<uint8_t>> getFileData(
+AL_DLL geode::Result<CachedBufferChunk> getFileData(
     geode::ZStringView path,
     bool assumeFullPath = false
 );

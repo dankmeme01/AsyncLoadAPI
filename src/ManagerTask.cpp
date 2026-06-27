@@ -120,7 +120,7 @@ TaskAdvanceResult ImageTask::advance(bool mainThread) {
         } break;
 
         case ImageRead: {
-            auto res = RawImage::create(m_imageData);
+            auto res = RawImage::create(m_imageData.span());
             if (!res) {
                 this->fail(fmt::format("failed to decode image: {}", res.unwrapErr()));
                 return TaskAdvanceResult::Finished;
@@ -177,6 +177,10 @@ TextureTask::~TextureTask() {
     if (m_glTex != 0) {
         glDeleteTextures(1, &m_glTex);
     }
+
+    if (m_glPbo) {
+        ALManager::get().returnPBO(std::move(m_glPbo));
+    }
 }
 
 bool TextureTask::finished() const {
@@ -211,7 +215,7 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
         } break;
 
         case ImageRead: {
-            auto res = RawImage::create(m_imageData);
+            auto res = RawImage::create(m_imageData.span());
             if (!res) {
                 this->fail(fmt::format("failed to decode image: {}", res.unwrapErr()));
                 return TaskAdvanceResult::Finished;

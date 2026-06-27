@@ -209,9 +209,9 @@ gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix) {
 }
 
 // forward decl for the implementation
-Result<std::vector<uint8_t>> getFileDataImpl(geode::ZStringView path);
+Result<CachedBufferChunk> getFileDataImpl(geode::ZStringView path);
 
-Result<std::vector<uint8_t>> getFileData(
+Result<CachedBufferChunk> getFileData(
     ZStringView path,
     bool assumeFullPath
 ) {

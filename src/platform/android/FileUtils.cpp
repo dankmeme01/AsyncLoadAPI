@@ -35,14 +35,14 @@ static std::unique_ptr<AAsset, AAssetDeleter> openAAsset(std::string_view path, 
     return std::unique_ptr<AAsset, AAssetDeleter>(AAssetManager_open(g_assetManager, buf.c_str(), mode));
 }
 
-static Result<std::vector<uint8_t>> openAndReadAAsset(std::string_view path) {
+static Result<CachedBufferChunk> openAndReadAAsset(std::string_view path) {
     auto asset = openAAsset(path, AASSET_MODE_UNKNOWN);
     if (!asset) {
         return Err("Failed to open asset '{}'", path);
     }
 
     size_t size = AAsset_getLength(asset.get());
-    std::vector<uint8_t> buffer(size);
+    auto buffer = BufferCache::get().getSized(size);
     size_t bytesRead = AAsset_read(asset.get(), buffer.data(), size);
     if (bytesRead != size) {
         return Err("Failed to read asset '{}'", path);
@@ -51,7 +51,7 @@ static Result<std::vector<uint8_t>> openAndReadAAsset(std::string_view path) {
     return Ok(std::move(buffer));
 }
 
-static geode::Result<std::vector<uint8_t>> openAndReadDisk(const char* path) {
+static Result<CachedBufferChunk> openAndReadDisk(const char* path) {
     int fd = open(path, O_RDONLY);
     if (fd == -1) {
         return Err("Failed to open file '{}', errno: {}", path, errno);
@@ -63,7 +63,7 @@ static geode::Result<std::vector<uint8_t>> openAndReadDisk(const char* path) {
         return Err("Failed to stat file '{}', errno: {}", path, errno);
     }
 
-    std::vector<uint8_t> buffer(fst.st_size);
+    auto buffer = BufferCache::get().getSized(fst.st_size);
     ssize_t bytesRead = read(fd, buffer.data(), fst.st_size);
     close(fd);
 
@@ -98,7 +98,7 @@ bool initializeAAssetManager() {
     return false;
 }
 
-Result<std::vector<uint8_t>> getFileDataImpl(ZStringView path) {
+Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
     std::string_view sv{path};
     if (!sv.empty() && sv[0] == '/') {
         // absolute path, read from disk

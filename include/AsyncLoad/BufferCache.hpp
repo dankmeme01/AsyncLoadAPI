@@ -1,4 +1,5 @@
 #pragma once
+#include "assert.hpp"
 
 namespace AsyncLoad {
 
@@ -30,6 +31,43 @@ private:
     size_t m_size;
 };
 
+struct CachedBufferChunk {
+    uint8_t* data() const {
+        return m_buf.data();
+    }
+    size_t size() const {
+        return m_size;
+    }
+    size_t capacity() const {
+        return m_buf.capacity();
+    }
+    bool empty() const {
+        return size() == 0;
+    }
+    std::span<uint8_t> span() const {
+        return std::span<uint8_t>(data(), size());
+    }
+    std::span<uint8_t> allocationSpan() const {
+        return std::span<uint8_t>(data(), capacity());
+    }
+    void setSize(size_t size) {
+        AL_ASSERT(size <= m_buf.capacity());
+        m_size = size;
+    }
+    CachedBuffer& buffer() {
+        return m_buf;
+    }
+
+    CachedBufferChunk() = default;
+    CachedBufferChunk(CachedBuffer buf, size_t size) : m_buf(std::move(buf)), m_size(size) {}
+    CachedBufferChunk(CachedBufferChunk&&) = default;
+    CachedBufferChunk& operator=(CachedBufferChunk&&) = default;
+
+private:
+    CachedBuffer m_buf;
+    size_t m_size = 0;
+};
+
 class BufferCache {
 public:
     BufferCache(const BufferCache&) = delete;
@@ -41,7 +79,16 @@ public:
 
     /// Gets a buffer that is at least `size` bytes in size. Once you are done with it, you can return it via `put`, or it will happen automatically.
     /// If the pool does not have a buffer of the appropriate size, one will be created.
+    /// Note: the returned buffer should not be treated as a growable vector, it has a fixed capacity that might not be the passed size.
+    /// If you do not want to separately store the size of written data, use `getSized`.
     CachedBuffer get(size_t size);
+
+    /// Returns a CachedBufferChunk that can be treated as a regular vector<uint8_t> with a size.
+    CachedBufferChunk getSized(size_t size);
+
+    /// Returns a CachedBufferChunk with the given contents copied to it.
+    CachedBufferChunk getSized(std::span<const uint8_t> data);
+    CachedBufferChunk getSized(const uint8_t* data, size_t size);
 
     /// Returns a buffer to the cache. The buffer must have been obtained from `get()`.
     /// If you want to share a self-allocated buffer with the pool after not needing it anymore,

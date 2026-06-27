@@ -130,7 +130,7 @@ struct Task {
 struct ImageTask final : Task {
     ImageLoadParams::Callback m_callback;
     asp::BoxedString m_path;
-    std::vector<uint8_t> m_imageData; // bytes in an arbitrary image format
+    CachedBufferChunk m_imageData; // bytes in an arbitrary image format
     std::optional<RawImage> m_image;
     bool m_pathIsFull;
 
@@ -144,7 +144,7 @@ struct ImageTask final : Task {
 struct TextureTask final : Task {
     TextureLoadParams::Callback m_callback;
     asp::BoxedString m_path;
-    std::vector<uint8_t> m_imageData; // bytes in an arbitrary image format
+    CachedBufferChunk m_imageData; // bytes in an arbitrary image format
     std::optional<RawImage> m_image;
     Ref<CCTexture2D> m_texture = nullptr;
     GLuint m_glTex = 0;
@@ -172,7 +172,7 @@ struct TextureTask final : Task {
 struct SpriteFramesTask final : Task {
     SpriteFramesLoadParams::Callback m_callback;
     asp::BoxedString m_path;
-    std::vector<uint8_t> m_data;
+    CachedBufferChunk m_data;
     std::optional<SpriteFrameData> m_spriteFrames;
     bool m_pathIsFull;
 

@@ -59,13 +59,13 @@ std::string getPathForDirAndFilenameImpl(ZStringView directory, ZStringView file
 }
 
 
-Result<std::vector<uint8_t>> getFileDataImpl(ZStringView path) {
+Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
     NSString* nsp = [NSString stringWithUTF8String:path.c_str()];
     NSError* error = nil;
     NSData* data = [NSData dataWithContentsOfFile:nsp options:NSDataReadingMappedIfSafe error:&error];
 
     if (data) {
-        auto buffer = std::vector<uint8_t>([data length]);
+        auto buffer = BufferCache::get().getSized([data length]);
         [data getBytes:buffer.data() length:buffer.size()];
         return Ok(std::move(buffer));
     }

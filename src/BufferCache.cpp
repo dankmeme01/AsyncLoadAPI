@@ -149,6 +149,21 @@ CachedBuffer BufferCache::get(size_t size) {
     return CachedBuffer{bucketSize};
 }
 
+CachedBufferChunk BufferCache::getSized(size_t size) {
+    auto buffer = this->get(size);
+    return CachedBufferChunk{ std::move(buffer), size };
+}
+
+CachedBufferChunk BufferCache::getSized(std::span<const uint8_t> data) {
+    auto buffer = this->getSized(data.size());
+    std::memcpy(buffer.data(), data.data(), data.size());
+    return buffer;
+}
+
+CachedBufferChunk BufferCache::getSized(const uint8_t* data, size_t size) {
+    return this->getSized(std::span<const uint8_t>(data, size));
+}
+
 void BufferCache::put(CachedBuffer buffer) {
     auto cache = m_cache.lock();
     auto it = std::lower_bound(cache->begin(), cache->end(), buffer.m_size, [](const CachedBuffer& a, size_t b) {

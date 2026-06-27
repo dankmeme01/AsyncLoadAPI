@@ -10,7 +10,7 @@ bool fileExists(ZStringView path) {
     return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-Result<std::vector<uint8_t>> getFileDataImpl(ZStringView path) {
+Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
     HANDLE file = CreateFileA(
         path.c_str(),
         GENERIC_READ,
@@ -31,7 +31,7 @@ Result<std::vector<uint8_t>> getFileDataImpl(ZStringView path) {
         return Err("Failed to get file size for '{}', error: {}", path, GetLastError());
     }
 
-    auto buffer = std::vector<uint8_t>(filesize.QuadPart);
+    auto buffer = BufferCache::get().getSized(filesize.QuadPart);
     DWORD bytesRead;
     if (!ReadFile(file, buffer.data(), filesize.QuadPart, &bytesRead, nullptr) || bytesRead != filesize.QuadPart) {
         CloseHandle(file);
