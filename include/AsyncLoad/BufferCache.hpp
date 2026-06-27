@@ -21,7 +21,7 @@ struct CachedBuffer {
 
     /// no one else should be able to create buffers
 #ifdef AsyncLoad_EXPORTS
-    CachedBuffer(size_t size) : m_data(std::make_unique<uint8_t[]>(size)), m_size(size) {}
+    CachedBuffer(size_t size) : m_data(std::make_unique_for_overwrite<uint8_t[]>(size)), m_size(size) {}
     CachedBuffer(std::unique_ptr<uint8_t[]> data, size_t size) : m_data(std::move(data)), m_size(size) {}
 #endif
 
