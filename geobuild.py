@@ -9,6 +9,7 @@ def main(build: Build):
     build.add_include_dir("src")
     build.add_include_dir("include")
     build.add_source_dir("src/*.cpp", recursive=False)
+    build.add_source_dir("src/nodes/*.cpp")
     build.add_source_dir(f"src/platform/{config.platform.platform_str(False)}/")
 
     build.enable_mod_json_generation("mod.template.json")

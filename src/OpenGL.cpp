@@ -9,9 +9,10 @@ void OpenGLInfo::initialize() {
     this->initFeatures();
     initialized = true;
 
-    log::info("PBO support: {}, tex storage: {}, parsed version: {}.{}",
+    log::info("PBO support: {}, tex storage: {}, sync: {}, parsed version: {}.{}",
         supportsPBO ? "yes" : "no",
         supportsImmutableTex ? "yes" : "no",
+        supportsSync ? "yes" : "no",
         version.first, version.second
     );
     auto v = (const char*)glGetString(GL_VERSION);
@@ -94,9 +95,13 @@ void OpenGLInfo::initFeatures() {
 #if defined(GEODE_IS_ANDROID)
     pglTexStorage2D = (globed_PFNGLTEXSTORAGE2D)eglGetProcAddress("glTexStorage2D");
     pglMapBufferRange = (globed_PFNGLMAPBUFFERRANGE)eglGetProcAddress("glMapBufferRange");
+    pglFenceSync = (globed_PFNGLFENCESYNC)eglGetProcAddress("glFenceSync");
+    pglClientWaitSync = (globed_PFNGLCLIENTWAITSYNC)eglGetProcAddress("glClientWaitSync");
 #else
     pglTexStorage2D = glTexStorage2D;
     pglMapBufferRange = glMapBufferRange;
+    pglFenceSync = glFenceSync;
+    pglClientWaitSync = glClientWaitSync;
 #endif
 
 #if defined(GEODE_IS_DESKTOP)
@@ -105,10 +110,14 @@ void OpenGLInfo::initFeatures() {
 
     // Immutable textures are a core feature of OpenGL 4.2+
     this->supportsImmutableTex = version.first >= 4 && version.second >= 2;
+
+    // synchronization is supported on OpenGL 3.2+
+    this->supportsSync = (version.first == 3 && version.second >= 2) || (version.first > 3);
 #else
-    // On mobile, PBOs and immutable textures are both GLES 3.0+
+    // On mobile, everything we need is since GLES 3.0+
     this->supportsPBO = version.first >= 3;
     this->supportsImmutableTex = version.first >= 3;
+    this->supportsSync = version.first >= 3;
 #endif
 
     // check for extensions
@@ -121,11 +130,20 @@ void OpenGLInfo::initFeatures() {
             && (supportsGLExtension("GL_EXT_map_buffer_range") || supportsGLExtension("GL_ARB_map_buffer_range"));
     }
 
+    if (!this->supportsSync) {
+        this->supportsSync = supportsGLExtension("GL_ARB_sync");
+    }
+
     // don't use the functions if support is not advertised
     if (!this->supportsImmutableTex) pglTexStorage2D = nullptr;
     if (!this->supportsPBO) pglMapBufferRange = nullptr;
+    if (!this->supportsSync) {
+        pglFenceSync = nullptr;
+        pglClientWaitSync = nullptr;
+    }
 
     // and of course, the other way around too
     if (!pglTexStorage2D) this->supportsImmutableTex = false;
     if (!pglMapBufferRange) this->supportsPBO = false;
+    if (!pglFenceSync || !pglClientWaitSync) this->supportsSync = false;
 }

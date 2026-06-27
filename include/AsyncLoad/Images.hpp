@@ -1,5 +1,6 @@
 #pragma once
 #include <stddef.h>
+#include <AsyncLoad/BufferCache.hpp>
 #include "config.hpp"
 
 namespace AsyncLoad {
@@ -10,7 +11,7 @@ AL_DLL void widenRGBtoRGBA(void* destination, const void* source, size_t pixelCo
 
 struct AL_DLL RawImage {
     /// Raw byte vector containing the image pixels.
-    std::unique_ptr<uint8_t[]> data;
+    CachedBuffer data;
     bool hasAlpha = false;
     uint32_t width = 0;
     uint32_t height = 0;

@@ -4,6 +4,12 @@
 #include "assert.hpp"
 #include <Geode/utils/general.hpp>
 
+#ifdef AL_DEBUG
+# define AL_TRACE(...) log::debug(__VA_ARGS__)
+#else
+# define AL_TRACE(...) do {} while (0)
+#endif
+
 namespace AsyncLoad {
 
 AL_DLL std::optional<cocos2d::CCRect> parseRect(std::string_view str);

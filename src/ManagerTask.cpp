@@ -7,9 +7,50 @@
 #include <AsyncLoad/FileUtils.hpp>
 #include <prevter.imageplus/include/events.hpp>
 
+#ifdef AL_DEBUG
+# define AL_BENCHMARK(code) \
+    do { \
+        auto start = asp::Instant::now(); \
+        code; \
+        auto taken = start.elapsed(); \
+        if (taken.micros() > 500) AL_TRACE("BENCHMARK: {} took {}", #code, taken); \
+    } while (0)
+#else
+# define AL_BENCHMARK(code) \
+    do { \
+        code; \
+    } while (0)
+#endif
+
 using namespace geode::prelude;
 
 namespace AsyncLoad {
+
+std::string_view format_as(TaskState state) {
+    switch (state) {
+        case TaskState::PreImageRead: return "PreImageRead";
+        case TaskState::ImageRead: return "ImageRead";
+        case TaskState::ImageReady: return "ImageReady";
+        case TaskState::AsyncPboReady: return "AsyncPboReady";
+        case TaskState::AsyncPboDone: return "AsyncPboDone";
+        case TaskState::TextureReady: return "TextureReady";
+        case TaskState::PrePlistRead: return "PrePlistRead";
+        case TaskState::PlistRead: return "PlistRead";
+        case TaskState::SpriteFramesReady: return "SpriteFramesReady";
+        case TaskState::Failed: return "Failed";
+        case TaskState::Invalid: return "Invalid";
+    }
+    std::unreachable();
+}
+
+std::string_view format_as(TaskGoal goal) {
+    switch (goal) {
+        case TaskGoal::Image: return "Image";
+        case TaskGoal::Texture: return "Texture";
+        case TaskGoal::SpriteFrames: return "SpriteFrames";
+    }
+    std::unreachable();
+}
 
 static void preparePath(auto& buf, std::string_view path, bool isFullPath) {
     if (isFullPath) {
@@ -136,9 +177,6 @@ TextureTask::~TextureTask() {
     if (m_glTex != 0) {
         glDeleteTextures(1, &m_glTex);
     }
-    if (m_glPbo != 0) {
-        glDeleteBuffers(1, &m_glPbo);
-    }
 }
 
 bool TextureTask::finished() const {
@@ -243,8 +281,6 @@ void TextureTask::preparePBO() {
     clearGLError();
 
     glGenTextures(1, &m_glTex);
-    glGenBuffers(1, &m_glPbo);
-
     glBindTexture(GL_TEXTURE_2D, m_glTex);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -270,16 +306,15 @@ void TextureTask::preparePBO() {
         checkGLDbg("glTexImage2D");
     }
 
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo);
-    glBufferData(GL_PIXEL_UNPACK_BUFFER, byteSize, nullptr, GL_STREAM_DRAW);
+    m_glPbo = ALManager::get().requestPBO(byteSize);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo.get());
 }
 
 TaskAdvanceResult TextureTask::startAsyncPBOLoad() {
-    this->preparePBO();
+    AL_BENCHMARK(this->preparePBO());
     int64_t byteSize = m_image->sizeBytes();
-
     auto flags = GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT | GL_MAP_UNSYNCHRONIZED_BIT;
-    m_mappedPboPtr = g_opengl.pglMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, byteSize, flags);
+    AL_BENCHMARK(m_mappedPboPtr = g_opengl.pglMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, byteSize, flags));
     checkGLDbg("glMapBufferRange");
 
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
@@ -300,21 +335,47 @@ TaskAdvanceResult TextureTask::doWriteIntoAsyncPBO() {
     AL_DEBUG_ASSERT(m_mappedPboPtr);
 
     auto size = m_image->sizeBytes();
-    std::memcpy(m_mappedPboPtr, m_image->data.get(), size);
+    std::memcpy(m_mappedPboPtr, m_image->data.data(), size);
 
     this->setState(TaskState::AsyncPboDone);
     return TaskAdvanceResult::RequiresMainThread;
 }
 
+void TextureTask::doFinalizeAsyncPBO() {
+    AL_BENCHMARK(clearGLError());
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo.get());
+    GLboolean ok = glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+    AL_ASSERT(ok);
+
+    glBindTexture(GL_TEXTURE_2D, m_glTex);
+
+    int64_t w = m_image->width, h = m_image->height;
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    AL_BENCHMARK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, nullptr));
+    checkGL("glTexSubImage2D");
+
+    // unbind texture & pbo
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // return the pbo
+    ALManager::get().returnPBO(std::move(m_glPbo));
+
+    m_texture = this->finalizeTexture(m_glTex);
+    m_glTex = 0;
+
+    this->setState(TaskState::TextureReady);
+}
+
 TaskAdvanceResult TextureTask::startPBOLoad() {
-    this->preparePBO();
+    AL_BENCHMARK(this->preparePBO());
 
     int64_t byteSize = m_image->sizeBytes();
-    glBufferSubData(GL_PIXEL_UNPACK_BUFFER, 0, byteSize, m_image->data.get());
+    AL_BENCHMARK(glBufferSubData(GL_PIXEL_UNPACK_BUFFER, 0, byteSize, m_image->data.data()));
     checkGLDbg("glBufferSubData");
 
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_image->width, m_image->height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    checkGLDbg("glTexSubImage2D");
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    AL_BENCHMARK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_image->width, m_image->height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr));
 
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -322,10 +383,8 @@ TaskAdvanceResult TextureTask::startPBOLoad() {
     m_texture = this->finalizeTexture(m_glTex);
     m_glTex = 0;
 
-    // retain the PBO since the actual texture transfer is asynchronous
-    // it will be deleted when all textures are purged
-    ALManager::get()._retainPBO(m_glPbo);
-    m_glPbo = 0;
+    // return the PBO to the manager so it can be reused later
+    ALManager::get().returnPBO(std::move(m_glPbo));
 
     this->setState(TaskState::TextureReady);
     return TaskAdvanceResult::RequiresMainThread;
@@ -344,7 +403,7 @@ TaskAdvanceResult TextureTask::startNoPBOLoad() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glTexImage2D(
+    AL_BENCHMARK(glTexImage2D(
         GL_TEXTURE_2D,
         0,
         GL_RGBA,
@@ -353,39 +412,13 @@ TaskAdvanceResult TextureTask::startNoPBOLoad() {
         0,
         GL_RGBA,
         GL_UNSIGNED_BYTE,
-        m_image->data.get()
-    );
+        m_image->data.data()
+    ));
 
     m_texture = this->finalizeTexture(num);
     this->setState(TaskState::TextureReady);
 
     return TaskAdvanceResult::Finished;
-}
-
-void TextureTask::doFinalizeAsyncPBO() {
-    clearGLError();
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo);
-    GLboolean ok = glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-    AL_ASSERT(ok);
-    glBindTexture(GL_TEXTURE_2D, m_glTex);
-
-    int64_t w = m_image->width, h = m_image->height;
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    checkGL("glTexSubImage2D");
-
-    // unbind texture & pbo
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    // retain pbo
-    ALManager::get()._retainPBO(m_glPbo);
-    m_glPbo = 0;
-
-    m_texture = this->finalizeTexture(m_glTex);
-    m_glTex = 0;
-
-    this->setState(TaskState::TextureReady);
 }
 
 // Sprite frames task

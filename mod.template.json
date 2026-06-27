@@ -1,34 +1,33 @@
 {
-	"geode": "5.7.1",
-	"gd": {
-		"win": "2.2081",
-		"android": "2.2081",
-		"mac": "2.2081",
-		"ios": "2.2081"
-	},
-	"id": "dankmeme.async-load-api",
-	"name": "Async Load API",
-	"version": "v1.0.0",
-	"developer": "dankmeme",
-	"description": "",
-	"dependencies": {},
-	"api": {
-		"include": [
-			"include/*.hpp"
-		]
-	},
-	"settings": {
-		"use-pbos": {
-			"type": "bool",
-			"default": true,
-			"name": "Use PBOs",
-			"description": "Uses OpenGL Pixel Buffer Objects to significantly speed up texture loading. This option has no impact on devices that do not support PBOs."
-		},
-		"use-direct-decode": {
-			"type": "bool",
-			"default": true,
-			"name": "Direct decode",
-			"description": "Tries to decode/premultiply images directly into the GPU, providing a slight speedup. This also avoids using (slower) cocos2d-x image decoders. This option requires PBOs to be supported and enabled and the <cg>ImagePlus</c> mod to be installed to have effect."
-		}
-	}
+    "geode": "5.7.1",
+    "gd": {
+        "win": "2.2081",
+        "android": "2.2081",
+        "mac": "2.2081",
+        "ios": "2.2081"
+    },
+    "id": "dankmeme.async-load-api",
+    "name": "Async Load API",
+    "version": "v1.0.0",
+    "developer": "dankmeme",
+    "description": "",
+    "dependencies": {},
+    "api": {
+        "include": [
+            "include/*.hpp"
+        ]
+    },
+    "settings": {
+        "use-pbos": {
+            "type": "bool",
+            "default": true,
+            "name": "Use PBOs",
+            "description": "Uses OpenGL Pixel Buffer Objects to significantly speed up texture loading. This option has no impact on devices that do not support PBOs."
+        },
+        "use-async-pbo": {
+            "type": "bool",
+            "default": true,
+            "name": "Async PBOs"
+        }
+    }
 }

@@ -1,22 +1,9 @@
 #pragma once
 
-#include <Geode/platform/cplatform.h>
+#include <AsyncLoad/OpenGLIncludes.hpp>
 #include <asp/iter.hpp>
 #include <utility>
 
-# if defined(GEODE_IS_MACOS)
-#  define GL_DO_NOT_WARN_IF_MULTI_GL_VERSION_HEADERS_INCLUDED
-#  include <OpenGL/gl3.h>
-#  include <OpenGL/gl3ext.h>
-# elif defined (GEODE_IS_ANDROID)
-#  include <Geode/cocos/platform/CCGL.h>
-#  include <EGL/egl.h>
-# elif defined (GEODE_IS_IOS)
-#  include <OpenGLES/ES3/gl.h>
-#  include <OpenGLES/ES3/glext.h>
-# else
-#  include <Geode/cocos/platform/CCGL.h>
-# endif
 
 # ifndef GL_PIXEL_UNPACK_BUFFER
 #  define GL_PIXEL_UNPACK_BUFFER 0x88EC
@@ -33,15 +20,21 @@
 
 using al_PFNGLTEXSTORAGE2D = void(*)(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height);
 using al_PFNGLMAPBUFFERRANGE = void*(*)(GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access);
+using al_PFNGLFENCESYNC = GLsync(*)(GLenum condition, GLbitfield flags);
+using al_PFNGLCLIENTWAITSYNC = GLenum(*)(GLsync sync, GLbitfield flags, GLuint64 timeout);
 
 static struct OpenGLInfo {
     al_PFNGLTEXSTORAGE2D   pglTexStorage2D   = nullptr;
     al_PFNGLMAPBUFFERRANGE pglMapBufferRange = nullptr;
+    al_PFNGLFENCESYNC      pglFenceSync      = nullptr;
+    al_PFNGLCLIENTWAITSYNC pglClientWaitSync = nullptr;
+
     std::string_view versionStr;
     std::pair<int, int> version{0, 0};
     bool initialized = false;
     bool supportsPBO = false;
     bool supportsImmutableTex = false;
+    bool supportsSync = false;
 
     void initialize();
 

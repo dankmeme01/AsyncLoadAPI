@@ -1,4 +1,5 @@
 #include <AsyncLoad/Manager.hpp>
+#include <AsyncLoad/FileUtils.hpp>
 #include <asp/thread/ThreadPool.hpp>
 #include "ManagerTask.hpp"
 
@@ -46,7 +47,7 @@ struct ALManager::Impl : CCObject {
     asp::Mutex<std::unordered_map<uint64_t, std::shared_ptr<Task>>> m_activeTasks;
     asp::Channel<std::shared_ptr<Task>> m_taskQueue;
     asp::Channel<std::shared_ptr<Task>> m_MTtaskQueue;
-    std::vector<GLuint> m_pbos;
+    std::vector<SmartPBO> m_pbos;
 
     Impl() {
         // spawn more threads than available, because some threads may be blocked on IO operations n stuff
@@ -56,6 +57,10 @@ struct ALManager::Impl : CCObject {
             m_threads.emplace_back(asp::Thread<> {[this](auto& st) {
                 this->threadFunc();
             }});
+
+            auto& t = m_threads.back();
+            t.setName("AsyncLoad worker thread");
+            t.start();
         }
     }
 
@@ -84,6 +89,8 @@ struct ALManager::Impl : CCObject {
     }
 
     void submitTask(std::shared_ptr<Task> task) {
+        AL_TRACE("Submitting task {} with goal {}", task->m_id, task->m_goal.load());
+
         auto active = m_activeTasks.lock();
         active->emplace(task->m_id, task);
         active.unlock();
@@ -103,6 +110,8 @@ struct ALManager::Impl : CCObject {
     }
 
     void update(float dt) {
+        auto start = asp::Instant::now();
+
         while (auto value = m_MTtaskQueue.tryPop()) {
             auto task = std::move(*value);
 
@@ -128,6 +137,7 @@ struct ALManager::Impl : CCObject {
 
             if (finished) {
                 // task finished, remove the task and run the callback if it wasn't cancelled
+                AL_TRACE("Task {} finished after {}, state: {}", task->m_id, task->elapsed(), task->state());
                 if (!task->cancelled()) {
                     task->invokeCallback();
                     auto active = m_activeTasks.lock();
@@ -137,6 +147,13 @@ struct ALManager::Impl : CCObject {
                 // task needs to continue running but does not require the main thread, so push it back to the worker threads
                 m_taskQueue.push(std::move(task));
             }
+        }
+
+        auto taken = start.elapsed();
+        if (taken.millis() > 10) {
+            log::warn("ALManager::update took {}", taken);
+        } else if (taken.millis() > 2) {
+            AL_TRACE("ALManager::update took {}", taken);
         }
     }
 };
@@ -170,23 +187,101 @@ TaskHandle ALManager::submitSpriteFramesLoad(SpriteFramesLoadParams&& params) {
     return task->handle();
 }
 
+TaskHandle ALManager::loadTexture(ZStringView path, TextureLoadParams::Callback callback, bool fullPath) {
+    auto tc = CCTextureCache::get();
+
+    gd::string fp{path.data(), path.size()};
+    if (!fullPath) {
+        fp = fullPathForFilename(path.view());
+    }
+
+    auto cachedTex = static_cast<CCTexture2D*>(tc->m_pTextures->objectForKey(fp));
+    if (cachedTex) {
+        AL_TRACE("loadTexture: cache hit for {}", fp);
+        callback(Ok(cachedTex));
+        return {};
+    }
+
+    return this->submitTextureLoad(TextureLoadParams{
+        .path = path,
+        .isFullPath = fullPath,
+        .callback = [cb = std::move(callback), fp = std::move(fp), tc](auto result) mutable {
+            if (!result) return cb(std::move(result));
+
+            auto tex = std::move(result).unwrap();
+            tc->m_pTextures->setObject(tex, fp);
+            cb(Ok(tex));
+        },
+    });
+}
+
 void ALManager::cancelTask(uint64_t id) {
     m_impl->cancelTask(id);
 }
 
-void ALManager::_retainPBO(uint32_t pbo) {
-    m_impl->m_pbos.push_back(pbo);
+SmartPBO ALManager::requestPBO(size_t capacity) {
+    auto& pbos = m_impl->m_pbos;
+
+    auto it = std::ranges::lower_bound(pbos, capacity, std::less{}, &SmartPBO::capacity);
+
+    size_t maxAcceptable = capacity * 4;
+    while (it != pbos.end()) {
+        size_t foundCapacity = it->capacity();
+
+        // if the found pbo is more than 4 times bigger than the size we need, don't use it and create a new one
+        if (foundCapacity > maxAcceptable) {
+            break;
+        }
+
+        // if the found PBO is actively being used by the GPU, skip it
+        if (it->isBusy()) {
+            ++it;
+            AL_TRACE("Skipping PBO {} because it is busy", foundCapacity);
+            continue;
+        }
+
+        // return this pbo
+        it->destroyFence();
+
+        auto pbo = std::move(*it);
+        pbos.erase(it);
+        return pbo;
+    }
+
+    AL_TRACE("Allocating new PBO with capacity {}", std::bit_ceil(capacity));
+    return SmartPBO::create(capacity);
+}
+
+void ALManager::returnPBO(SmartPBO pbo) {
+    // create a sync fence before returning it
+    pbo.createFence();
+
+    // keep the vector sorted
+    auto& pbos = m_impl->m_pbos;
+    auto it = std::ranges::lower_bound(pbos, pbo.capacity(), std::less{}, &SmartPBO::capacity);
+    pbos.insert(it, std::move(pbo));
 }
 
 void ALManager::_freePBOs() {
-    for (auto pbo : m_impl->m_pbos) {
-        glDeleteBuffers(1, &pbo);
-    }
     m_impl->m_pbos.clear();
+}
+
+void ALManager::_cancelAll() {
+    auto active = m_impl->m_activeTasks.lock();
+    for (auto& [id, task] : *active) {
+        task->cancel();
+    }
+    active->clear();
+}
+
+void ALManager::lendMainThread() {
+    m_impl->update(0.f);
 }
 
 }
 
 $on_game(TexturesUnloaded) {
-    AsyncLoad::ALManager::get()._freePBOs();
+    auto& m = AsyncLoad::ALManager::get();
+    m._freePBOs();
+    m._cancelAll();
 }

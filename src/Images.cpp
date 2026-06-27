@@ -162,13 +162,13 @@ void widenRGBtoRGBA(void* destination, const void* source, size_t pixelCount) {
 
 void RawImage::premultiply() {
     if (hasAlpha) {
-        premultiplyAlphaInplace(this->data.get(), this->sizeBytes());
+        premultiplyAlphaInplace(this->data.data(), this->sizeBytes());
         return;
     }
 
     auto newSize = this->width * this->height * 4;
-    auto newData = std::make_unique<uint8_t[]>(newSize);
-    widenRGBtoRGBA(newData.get(), this->data.get(), this->width * this->height);
+    auto newData = BufferCache::get().get(newSize);
+    widenRGBtoRGBA(newData.data(), this->data.data(), this->width * this->height);
     this->data = std::move(newData);
     this->hasAlpha = true;
 }
@@ -179,13 +179,14 @@ Result<RawImage> RawImage::create(cocos2d::CCImage* image, bool takeOwneship) {
     bool alpha = image->m_bHasAlpha;
     uint64_t byteSize = w * h * (3 + (uint64_t)alpha);
 
-    std::unique_ptr<uint8_t[]> buf;
+    CachedBuffer buf;
     if (takeOwneship) {
-        buf = std::unique_ptr<uint8_t[]>(image->m_pData);
+        auto ptr = std::unique_ptr<uint8_t[]>(image->m_pData);
+        buf = BufferCache::get().registerNew(std::move(ptr), byteSize);
         image->m_pData = nullptr;
     } else {
-        buf = std::make_unique<uint8_t[]>(byteSize);
-        std::memcpy(buf.get(), image->m_pData, byteSize);
+        buf = BufferCache::get().get(byteSize);
+        std::memcpy(buf.data(), image->m_pData, byteSize);
     }
 
     return Ok(RawImage {
@@ -218,8 +219,11 @@ Result<RawImage> RawImage::create(std::span<const uint8_t> data) {
         return Err("only 8-bit images are supported in RawImage");
     }
 
+    auto byteSize = (uint64_t)img->width * img->height * (img->hasAlpha ? 4 : 3);
+    auto buf = BufferCache::get().registerNew(std::move(img->data), byteSize);
+
     return Ok(RawImage {
-        .data = std::move(img->data),
+        .data = std::move(buf),
         .hasAlpha = img->hasAlpha,
         .width = img->width,
         .height = img->height,

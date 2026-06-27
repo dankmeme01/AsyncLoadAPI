@@ -38,6 +38,8 @@ enum class TaskState : uint8_t {
     Invalid,
 };
 
+std::string_view format_as(TaskState state);
+
 /// The final goal, what the task should do before it is considered successfully complete.
 enum class TaskGoal : uint8_t {
     /// Load a raw image into memory
@@ -47,6 +49,8 @@ enum class TaskGoal : uint8_t {
     /// Parse sprite frames
     SpriteFrames,
 };
+
+std::string_view format_as(TaskGoal goal);
 
 /// The result of a single operation in a task, returned from advance()
 enum class TaskAdvanceResult : uint8_t {
@@ -61,12 +65,15 @@ enum class TaskAdvanceResult : uint8_t {
 
 struct Task {
     uint64_t m_id;
+#ifdef AL_DEBUG
+    asp::Instant m_startTime;
+#endif
     Atomic<TaskState> m_state{TaskState::Invalid};
     Atomic<TaskGoal> m_goal;
     Atomic<bool> m_cancelled = false;
     std::string m_error;
 
-    Task() : m_id(utils::random::nextU64()) {}
+    Task() : m_id(utils::random::nextU64()), m_startTime(asp::Instant::now()) {}
 
     TaskHandle handle() const {
         return TaskHandle(m_id);
@@ -105,6 +112,12 @@ struct Task {
         return m_state == TaskState::Failed;
     }
 
+#ifdef AL_DEBUG
+    asp::Duration elapsed() const {
+        return m_startTime.elapsed();
+    }
+#endif
+
     /// Returns whether the operation finished: due to either a full success, an error or being cancelled.
     /// If this returns true, the task should immediately be discarded, and invokeCallback() should be called if cancelled() == false.
     virtual bool finished() const = 0;
@@ -135,7 +148,7 @@ struct TextureTask final : Task {
     std::optional<RawImage> m_image;
     Ref<CCTexture2D> m_texture = nullptr;
     GLuint m_glTex = 0;
-    GLuint m_glPbo = 0;
+    SmartPBO m_glPbo;
     void* m_mappedPboPtr = nullptr;
     bool m_pathIsFull;
 

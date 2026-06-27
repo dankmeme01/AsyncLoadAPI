@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "SpriteFrames.hpp"
 #include "Images.hpp"
+#include "SmartPBO.hpp"
 
 namespace AsyncLoad {
 
@@ -64,6 +65,7 @@ struct AL_DLL SpriteFramesLoadParams {
 };
 
 struct [[nodiscard("call .leak() or store TaskHandle to not cancel it immediately")]] AL_DLL TaskHandle {
+    TaskHandle() : m_id(0) {}
     TaskHandle(uint64_t id);
     TaskHandle(const TaskHandle&) = delete;
     TaskHandle& operator=(const TaskHandle&) = delete;
@@ -89,6 +91,17 @@ public:
 
     ~ALManager();
 
+    // High-level load APIs - high-level safe APIs that will use caches
+    // Note that those may invoke the given callback *instantly* if cache is available.
+    // In that case, they may return a blank TaskHandle.
+
+    /// Loads a CCTexture2D* from the given path, invokes callback on main thread (or instantly) when done or errored.
+    TaskHandle loadTexture(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath = false);
+
+    // Submission APIs - low-level APIs for high control.
+    // They are fully thread-safe, and enqueue operations to happen in the background, giving you a handle to cancel it and letting you pass a callback.
+    // They do not interact with any caches. For a slightly higher level API that will use cocos caches, see ALManager::loadXXXX APIs.
+
     /// Begins to load an image in the background and invokes the given callback on main thread when done or errored.
     TaskHandle submitImageLoad(ImageLoadParams&& params);
     /// Begins to load a texture in the background and invokes the given callback on main thread when done or errored.
@@ -97,10 +110,23 @@ public:
     /// This does not load the actual texture of the spritesheet, only the sprite frames. Use submitTextureLoad() for that.
     TaskHandle submitSpriteFramesLoad(SpriteFramesLoadParams&& params);
 
+
+    /// This function may be called at any time to push forward any pending asynchronous tasks that are waiting for the main thread.
+    /// Note: this MUST only be called from the thread owning the OpenGL context, otherwise behavior is undefined.
+    /// This is useful when you are blocking the main thread for a while to wait for resources to load,
+    /// or if you are rewriting the game core loop and want to make it so the game actually does work instead of sleeping between frames.
+    void lendMainThread();
+
+    SmartPBO requestPBO(size_t capacity);
+    void returnPBO(SmartPBO pbo);
+
+    // Internal APIs, not for public use
+#ifdef AsyncLoad_EXPORTS
     void cancelTask(uint64_t id);
 
-    void _retainPBO(uint32_t pbo);
     void _freePBOs();
+    void _cancelAll();
+#endif
 
 private:
     struct Impl;
