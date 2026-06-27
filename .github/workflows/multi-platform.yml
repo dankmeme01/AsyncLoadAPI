@@ -41,6 +41,9 @@ jobs:
         with:
           combine: true
           target: ${{ matrix.config.target }}
+          sdk: '5.7.1'
+          export-pdb: true
+          export-symbols: true
 
   package:
     name: Package builds
