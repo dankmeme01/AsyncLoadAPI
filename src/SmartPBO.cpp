@@ -24,7 +24,9 @@ SmartPBO::~SmartPBO() {
 }
 
 SmartPBO SmartPBO::create(size_t capacity) {
+#ifdef ENABLE_CACHE
     capacity = std::bit_ceil(capacity);
+#endif
 
     uint32_t pbo;
     glGenBuffers(1, &pbo);

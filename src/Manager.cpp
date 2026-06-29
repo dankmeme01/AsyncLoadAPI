@@ -226,6 +226,7 @@ void ALManager::cancelTask(uint64_t id) {
 }
 
 SmartPBO ALManager::requestPBO(size_t capacity) {
+#ifdef ENABLE_CACHE
     auto& pbos = m_impl->m_pbos;
 
     auto it = std::ranges::lower_bound(pbos, capacity, std::less{}, &SmartPBO::capacity);
@@ -253,12 +254,14 @@ SmartPBO ALManager::requestPBO(size_t capacity) {
         pbos.erase(it);
         return pbo;
     }
-
     AL_TRACE("Allocating new PBO with capacity {}", std::bit_ceil(capacity));
+#endif
+
     return SmartPBO::create(capacity);
 }
 
 void ALManager::returnPBO(SmartPBO pbo) {
+#ifdef ENABLE_CACHE
     // create a sync fence before returning it
     pbo.createFence();
 
@@ -266,6 +269,7 @@ void ALManager::returnPBO(SmartPBO pbo) {
     auto& pbos = m_impl->m_pbos;
     auto it = std::ranges::lower_bound(pbos, pbo.capacity(), std::less{}, &SmartPBO::capacity);
     pbos.insert(it, std::move(pbo));
+#endif
 }
 
 void ALManager::_freePBOs() {

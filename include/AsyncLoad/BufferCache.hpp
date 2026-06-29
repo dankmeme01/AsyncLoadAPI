@@ -110,6 +110,8 @@ private:
     std::atomic<size_t> m_totalUsage{0};
 
     BufferCache();
+
+    void freeToAccomodateFor(size_t alloc);
 };
 
 }

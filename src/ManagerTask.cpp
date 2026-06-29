@@ -311,6 +311,7 @@ void TextureTask::preparePBO() {
     }
 
     m_glPbo = ALManager::get().requestPBO(byteSize);
+    AL_TRACE("allocated PBO {} with capacity {} for task {}", m_glPbo.get(), m_glPbo.capacity(), m_id);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo.get());
 }
 

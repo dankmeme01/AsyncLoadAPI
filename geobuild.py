@@ -5,6 +5,7 @@ if TYPE_CHECKING:
 def main(build: Build):
     config = build.config
     debug = build.add_option("ASYNCLOAD_DEBUG", False, "Enable debug mode for AsyncLoad")
+    caching = build.add_option("ASYNCLOAD_ENABLE_CACHE", False, "Enable PBO/buffer caching")
 
     build.add_include_dir("src")
     build.add_include_dir("include")
@@ -26,8 +27,5 @@ def main(build: Build):
 
     if debug:
         build.add_definition("AL_DEBUG")
-
-# file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
-# if (APPLE)
-#     list(APPEND SOURCES src/SpriteFramesApple.mm)
-# endif()
+    if caching:
+        build.add_definition("ENABLE_CACHE")

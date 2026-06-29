@@ -5,6 +5,7 @@
 
 using namespace geode::prelude;
 
+static constexpr size_t TOTAL_MAXIMUM_THRESHOLD = 256 * 1024 * 1024;
 static constexpr size_t AGGRESSIVE_CLEANUP_THRESHOLD = 32 * 1024 * 1024;
 static constexpr size_t PARTIAL_CLEANUP_THRESHOLD = 8 * 1024 * 1024;
 
@@ -20,7 +21,9 @@ CachedBuffer::~CachedBuffer() {
     BufferCache::get().put(CachedBuffer{ std::move(m_data), m_size });
 }
 
+
 BufferCache::BufferCache() {
+#ifdef ENABLE_CACHE
     async::spawn([this] -> arc::Future<> {
         std::deque<std::pair<size_t, size_t>> measurements;
         std::vector<CachedBuffer> deallocateQueue;
@@ -112,9 +115,11 @@ BufferCache::BufferCache() {
             );
         }
     });
+#endif
 }
 
 CachedBuffer BufferCache::get(size_t size) {
+#ifdef ENABLE_CACHE
     size_t bucketSize = std::max<size_t>(std::bit_ceil(size), 4096);
 
     // update measurements
@@ -145,8 +150,12 @@ CachedBuffer BufferCache::get(size_t size) {
     }
     cache.unlock();
 
+    this->freeToAccomodateFor(size);
     m_totalUsage.fetch_add(bucketSize, std::memory_order::relaxed);
     return CachedBuffer{bucketSize};
+#else
+    return CachedBuffer{size};
+#endif
 }
 
 CachedBufferChunk BufferCache::getSized(size_t size) {
@@ -165,26 +174,64 @@ CachedBufferChunk BufferCache::getSized(const uint8_t* data, size_t size) {
 }
 
 void BufferCache::put(CachedBuffer buffer) {
+#ifdef ENABLE_CACHE
     auto cache = m_cache.lock();
     auto it = std::lower_bound(cache->begin(), cache->end(), buffer.m_size, [](const CachedBuffer& a, size_t b) {
         return a.m_size < b;
     });
     cache->insert(it, std::move(buffer));
+#else
+    buffer.m_data.reset();
+#endif
 }
 
 void BufferCache::putNew(std::unique_ptr<uint8_t[]> data, size_t size) {
+#ifdef ENABLE_CACHE
+    this->freeToAccomodateFor(size);
     this->put(CachedBuffer{ std::move(data), size });
     m_totalUsage.fetch_add(size, std::memory_order::relaxed);
+#endif
 }
 
 CachedBuffer BufferCache::registerNew(std::unique_ptr<uint8_t[]> data, size_t size) {
+#ifdef ENABLE_CACHE
+    this->freeToAccomodateFor(size);
     m_totalUsage.fetch_add(size, std::memory_order::relaxed);
+#endif
     return CachedBuffer{ std::move(data), size };
 }
 
 BufferCache& BufferCache::get() {
     static BufferCache instance;
     return instance;
+}
+
+void BufferCache::freeToAccomodateFor(size_t alloc) {
+    auto untilLimit = TOTAL_MAXIMUM_THRESHOLD - m_totalUsage.load(std::memory_order::relaxed);
+    size_t freedBytes = 0;
+
+    auto cache = m_cache.lock();
+    while (untilLimit < alloc) {
+        // we are reaching too much ram used, free some buffers
+        if (cache->empty()) {
+            break; // should rarely happen
+        }
+
+        // get the median buffer
+        auto idx = cache->size() / 2 + 1;
+        if (idx >= cache->size()) {
+            idx = cache->size() - 1;
+        }
+
+        auto it = cache->begin() + idx;
+        it->m_data.reset();
+        freedBytes += it->m_size;
+        cache->erase(it);
+        untilLimit += freedBytes;
+    }
+    cache.unlock();
+
+    m_totalUsage.fetch_sub(freedBytes, std::memory_order::relaxed);
 }
 
 }
