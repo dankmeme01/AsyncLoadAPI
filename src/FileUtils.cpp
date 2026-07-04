@@ -210,6 +210,7 @@ gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix) {
 
 // forward decl for the implementation
 Result<CachedBufferChunk> getFileDataImpl(geode::ZStringView path);
+Result<FileMappedBuffer> getMappedFileImpl(geode::ZStringView path);
 
 Result<CachedBufferChunk> getFileData(
     ZStringView path,
@@ -225,6 +226,22 @@ Result<CachedBufferChunk> getFileData(
 
     auto p = fullPathForFilename(path);
     return getFileDataImpl(p);
+}
+
+Result<FileMappedBuffer> getMappedFile(
+    ZStringView path,
+    bool assumeFullPath
+) {
+    if (path.empty()) {
+        return Err("Empty path passed to getMappedFile");
+    }
+
+    if (assumeFullPath) {
+        return getMappedFileImpl(path);
+    }
+
+    auto p = fullPathForFilename(path);
+    return getMappedFileImpl(p);
 }
 
 size_t getFPFFCacheHits() {

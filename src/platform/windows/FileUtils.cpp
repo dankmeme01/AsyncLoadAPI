@@ -42,4 +42,43 @@ Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
     return Ok(std::move(buffer));
 }
 
+Result<FileMappedBuffer> getMappedFileImpl(ZStringView path) {
+    HANDLE file = CreateFileA(
+        path.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_FLAG_SEQUENTIAL_SCAN,
+        nullptr
+    );
+
+    if (file == INVALID_HANDLE_VALUE) {
+        return Err("Failed to open file '{}', error: {}", path, GetLastError());
+    }
+
+    return FileMappedBuffer::createWithFd(file);
+}
+
+Result<> FileMappedBuffer::_map() {
+    auto mapping = CreateFileMapping(m_fd, NULL, PAGE_READONLY, 0, 0, NULL);
+    if (!mapping) {
+        return Err("Failed to create file mapping, error: {}", GetLastError());
+    }
+
+    m_ptr = (uint8_t*)MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+    CloseHandle(mapping);
+    return Ok();
+}
+
+void FileMappedBuffer::_destroy() {
+    if (m_ptr) {
+        UnmapViewOfFile(m_ptr);
+    }
+
+    if (m_fd != INVALID_FD) {
+        CloseHandle(m_fd);
+    }
+}
+
 }

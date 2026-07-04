@@ -22,6 +22,8 @@
     } while (0)
 #endif
 
+static constexpr bool USE_MAPPING = true;
+
 using namespace geode::prelude;
 
 namespace AsyncLoad {
@@ -205,17 +207,37 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
 
     switch (this->state()) {
         case PreImageRead: {
-            auto res = getFileData(m_path.c_str(), m_pathIsFull);
-            if (!res) {
-                this->fail(fmt::format("failed to read image file: {}", res.unwrapErr()));
-                return TaskAdvanceResult::Finished;
+            auto in = asp::Instant::now();
+
+            if constexpr (USE_MAPPING) {
+                auto res = getMappedFile(m_path.c_str(), m_pathIsFull);
+                if (!res) {
+                    this->fail(fmt::format("failed to read image file (mapped mode): {}", res.unwrapErr()));
+                    return TaskAdvanceResult::Finished;
+                }
+                m_imageData = std::move(*res);
+            } else {
+                auto res = getFileData(m_path.c_str(), m_pathIsFull);
+                if (!res) {
+                    this->fail(fmt::format("failed to read image file: {}", res.unwrapErr()));
+                    return TaskAdvanceResult::Finished;
+                }
+                m_imageData = std::move(*res);
             }
-            m_imageData = std::move(*res);
+
+            AL_TRACE("Image read finished in {}", in.elapsed());
             this->setState(ImageRead);
         } break;
 
         case ImageRead: {
-            auto res = RawImage::create(m_imageData.span());
+            std::span<const uint8_t> data;
+            if (std::holds_alternative<CachedBufferChunk>(m_imageData)) {
+                data = std::get<CachedBufferChunk>(m_imageData).span();
+            } else if (std::holds_alternative<FileMappedBuffer>(m_imageData)) {
+                data = std::get<FileMappedBuffer>(m_imageData).span();
+            }
+
+            auto res = RawImage::create(data);
             if (!res) {
                 this->fail(fmt::format("failed to decode image: {}", res.unwrapErr()));
                 return TaskAdvanceResult::Finished;

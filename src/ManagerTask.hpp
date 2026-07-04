@@ -2,6 +2,7 @@
 #include <AsyncLoad/Manager.hpp>
 #include <asp/ptr/BoxedString.hpp>
 #include <Geode/Geode.hpp>
+#include "FileMappedBuffer.hpp"
 
 using namespace geode::prelude;
 
@@ -144,7 +145,7 @@ struct ImageTask final : Task {
 struct TextureTask final : Task {
     TextureLoadParams::Callback m_callback;
     asp::BoxedString m_path;
-    CachedBufferChunk m_imageData; // bytes in an arbitrary image format
+    std::variant<CachedBufferChunk, FileMappedBuffer> m_imageData; // bytes in an arbitrary image format
     std::optional<RawImage> m_image;
     Ref<CCTexture2D> m_texture = nullptr;
     GLuint m_glTex = 0;
