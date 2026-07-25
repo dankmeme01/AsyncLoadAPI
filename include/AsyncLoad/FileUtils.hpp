@@ -16,6 +16,7 @@ AL_DLL gd::string getPathForFilename(std::string_view filename, std::string_view
 
 /// Rewrite of CCFileUtils::fullPathForFilename, much faster and completely thread-safe.
 AL_DLL gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix = false);
+AL_DLL gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<std::string_view> applySuffix);
 
 /// Rewrite of CCFileUtils::getFileData, fast and thread safe, and with good error reporting.
 AL_DLL geode::Result<CachedBufferChunk> getFileData(

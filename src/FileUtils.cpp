@@ -118,6 +118,13 @@ static gd::string getCachedPath(uint64_t hash) {
 }
 
 gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix) {
+    return fullPathForFilenameWithSuffix(
+        input,
+        ignoreSuffix ? std::nullopt : std::optional{getQualitySuffix(getTextureQuality())}
+    );
+}
+
+gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<std::string_view> applySuffix) {
     g_fpffCalls.fetch_add(1, std::memory_order::relaxed);
 
     if (input.empty()) {
@@ -140,8 +147,8 @@ gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix) {
 
     // try to find the string in cache
     auto hash = fnv1aHash(input);
-    if (ignoreSuffix) {
-        hash ^= 0xdeadbeefdeadbeef;
+    if (applySuffix) {
+        hash ^= fnv1aHash(*applySuffix);
     }
 
     auto cached = getCachedPath(hash);
@@ -157,7 +164,7 @@ gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix) {
     // add the quality suffix if needed
     utils::StringBuffer<1024> filenameBuf;
 
-    if (!ignoreSuffix) {
+    if (applySuffix) {
         auto period = input.find_last_of('.');
         std::string_view base = input.substr(0, period);
 
@@ -165,7 +172,7 @@ gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix) {
 
         if (!hasQualitySuffix) {
             filenameBuf.append(base);
-            filenameBuf.append(getQualitySuffix(getTextureQuality()));
+            filenameBuf.append(*applySuffix);
 
             if (period != std::string::npos) {
                 std::string_view extension = input.substr(period);
@@ -195,17 +202,20 @@ gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix) {
         }
     }
 
-    if (ignoreSuffix) {
-        // if all else fails, accept defeat
-        auto outStr = gd::string{filename.data(), filename.size()};
-        cachePath(hash, outStr);
-        return outStr;
+    gd::string ret;
+    if (applySuffix == "-uhd") {
+        // try to downgrade and see if there's an -hd texture
+        ret = fullPathForFilenameWithSuffix(input, "-hd");
+    } else if (applySuffix) {
+        // hd fails, try to find the same file without any quality suffix
+        ret = fullPathForFilenameWithSuffix(input, std::nullopt);
     } else {
-        // try to find the file without the quality suffix
-        auto ret = fullPathForFilename(input, true);
-        cachePath(hash, ret);
-        return ret;
+        // if all else fails, accept defeat
+        ret = gd::string{filename.data(), filename.size()};
     }
+
+    cachePath(hash, ret);
+    return ret;
 }
 
 // forward decl for the implementation

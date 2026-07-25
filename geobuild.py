@@ -18,6 +18,7 @@ def main(build: Build):
         "version": ">=v1.1.0",
         "required": False,
     })
+    build.relax_geode_requirement()
 
     if config.platform.is_apple():
         build.add_source_dir("src/platform/shared_apple")

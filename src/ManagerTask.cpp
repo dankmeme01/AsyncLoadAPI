@@ -22,7 +22,11 @@
     } while (0)
 #endif
 
+#ifdef GEODE_IS_WINDOWS
 static constexpr bool USE_MAPPING = true;
+#else
+static constexpr bool USE_MAPPING = false;
+#endif
 
 using namespace geode::prelude;
 
