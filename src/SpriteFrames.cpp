@@ -13,7 +13,6 @@ namespace AsyncLoad {
 
 struct SpriteFrameData::Impl {
     SpriteFrameMetadata metadata;
-    pugi::xml_document doc;
     std::vector<SpriteFrame> frames;
 };
 
@@ -215,18 +214,19 @@ Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, bool passBuff
     auto sfdata = std::make_unique<SpriteFrameData::Impl>();
 
     pugi::xml_parse_result result;
+    pugi::xml_document doc;
 
     if (passBufferOwnership) {
-        result = sfdata->doc.load_buffer_inplace_own(data, size);
+        result = doc.load_buffer_inplace_own(data, size);
     } else {
-        result = sfdata->doc.load_buffer_inplace(data, size);
+        result = doc.load_buffer_inplace(data, size);
     }
 
     if (!result) {
         return Err("Failed to parse XML: {}", result.description());
     }
 
-    pugi::xml_node plist = sfdata->doc.child("plist");
+    pugi::xml_node plist = doc.child("plist");
     if (!plist) {
         return Err("Failed to find root <plist> node");
     }

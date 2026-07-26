@@ -5,6 +5,7 @@
 using namespace geode::prelude;
 
 static asp::Mutex<std::unordered_map<uint64_t, gd::string>> g_cache;
+static std::atomic<std::shared_ptr<std::vector<std::string>>> g_searchPaths;
 static std::atomic<size_t> g_cacheHits = 0;
 static std::atomic<size_t> g_cacheMisses = 0;
 static std::atomic<size_t> g_fpffCalls = 0;
@@ -37,6 +38,66 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
         CCFileUtils::purgeFileUtils();
         auto guard = g_cache.lock();
         guard->clear();
+    }
+
+    // Hooks that may modify search paths, for cloning them into a thread-safe variable
+
+    $override
+    void setSearchPaths(const gd::vector<gd::string>& searchPaths) {
+        CCFileUtils::setSearchPaths(searchPaths);
+        this->cloneSearchPaths();
+    }
+
+    $override
+    void addTexturePack(CCTexturePack pack) {
+        CCFileUtils::addTexturePack(std::move(pack));
+        this->cloneSearchPaths();
+    }
+
+    $override
+    void removeTexturePack(std::string_view id) {
+        CCFileUtils::removeTexturePack(id);
+        this->cloneSearchPaths();
+    }
+
+    $override
+    void addPriorityPath(const char* path) {
+        CCFileUtils::addPriorityPath(path);
+        this->cloneSearchPaths();
+    }
+
+    $override
+    void updatePaths() {
+        CCFileUtils::updatePaths();
+        this->cloneSearchPaths();
+    }
+
+    $override
+    void addSearchPath(const char* path) {
+        CCFileUtils::addSearchPath(path);
+        this->cloneSearchPaths();
+    }
+
+    $override
+    void removeSearchPath(const char *path) {
+        CCFileUtils::removeSearchPath(path);
+        this->cloneSearchPaths();
+    }
+
+    $override
+    void removeAllPaths() {
+        CCFileUtils::removeAllPaths();
+        this->cloneSearchPaths();
+    }
+
+    void cloneSearchPaths() {
+        auto paths = this->getSearchPaths();
+        auto vec = std::make_shared<std::vector<std::string>>();
+        vec->reserve(paths.size());
+        for (const auto& p : paths) {
+            vec->emplace_back(p);
+        }
+        g_searchPaths.store(vec, std::memory_order::relaxed);
     }
 };
 
@@ -189,12 +250,14 @@ gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<s
     // as nobody really uses it and it'd be a pain
 
     auto filename = filenameBuf.view();
-    auto& searchPaths = fu.getSearchPaths();
 
     // we discard resolution directories here, since no one uses them
 
     // try all search paths
-    for (const auto& sp : searchPaths) {
+    auto searchPaths = g_searchPaths.load(std::memory_order::relaxed);
+    AL_DEBUG_ASSERT(searchPaths);
+
+    for (const auto& sp : *searchPaths) {
         auto fp = getPathForFilename(filename, "", sp);
         if (!fp.empty()) {
             cachePath(hash, fp);
@@ -219,8 +282,9 @@ gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<s
 }
 
 // forward decl for the implementation
-Result<CachedBufferChunk> getFileDataImpl(geode::ZStringView path);
-Result<FileMappedBuffer> getMappedFileImpl(geode::ZStringView path);
+Result<CachedBufferChunk> getFileDataImpl(ZStringView path);
+Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path);
+Result<FileMappedBuffer> getMappedFileImpl(ZStringView path);
 
 Result<CachedBufferChunk> getFileData(
     ZStringView path,
@@ -238,6 +302,22 @@ Result<CachedBufferChunk> getFileData(
     return getFileDataImpl(p);
 }
 
+Result<OwnedBuffer> getFileDataOwned(
+    ZStringView path,
+    bool assumeFullPath
+) {
+    if (path.empty()) {
+        return Err("Empty path passed to getFileDataOwned");
+    }
+
+    if (assumeFullPath) {
+        return getFileDataOwnedImpl(path);
+    }
+
+    auto p = fullPathForFilename(path);
+    return getFileDataOwnedImpl(p);
+}
+
 Result<FileMappedBuffer> getMappedFile(
     ZStringView path,
     bool assumeFullPath
@@ -252,6 +332,10 @@ Result<FileMappedBuffer> getMappedFile(
 
     auto p = fullPathForFilename(path);
     return getMappedFileImpl(p);
+}
+
+std::shared_ptr<std::vector<std::string>> getSearchPaths() {
+    return g_searchPaths.load(std::memory_order::relaxed);
 }
 
 size_t getFPFFCacheHits() {

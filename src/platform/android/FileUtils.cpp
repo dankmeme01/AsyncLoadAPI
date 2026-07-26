@@ -51,8 +51,24 @@ static Result<CachedBufferChunk> openAndReadAAsset(std::string_view path) {
     return Ok(std::move(buffer));
 }
 
-static Result<CachedBufferChunk> openAndReadDisk(const char* path) {
-    int fd = open(path, O_RDONLY);
+static Result<OwnedBuffer> openAndReadAAssetOwned(std::string_view path) {
+    auto asset = openAAsset(path, AASSET_MODE_UNKNOWN);
+    if (!asset) {
+        return Err("Failed to open asset '{}'", path);
+    }
+
+    size_t size = AAsset_getLength(asset.get());
+    auto buffer = std::make_unique_for_overwrite<uint8_t[]>(size);
+    size_t bytesRead = AAsset_read(asset.get(), buffer.data(), size);
+    if (bytesRead != size) {
+        return Err("Failed to read asset '{}'", path);
+    }
+
+    return Ok(std::move(buffer));
+}
+
+static Result<std::pair<int, size_t>> doOpen(ZStringView path) {
+    int fd = open(path.c_str(), O_RDONLY);
     if (fd == -1) {
         return Err("Failed to open file '{}', errno: {}", path, errno);
     }
@@ -63,11 +79,30 @@ static Result<CachedBufferChunk> openAndReadDisk(const char* path) {
         return Err("Failed to stat file '{}', errno: {}", path, errno);
     }
 
-    auto buffer = BufferCache::get().getSized(fst.st_size);
-    ssize_t bytesRead = read(fd, buffer.data(), fst.st_size);
+    return Ok(std::make_pair(fd, fst.st_size));
+}
+
+static Result<CachedBufferChunk> openAndReadDisk(const char* path) {
+    auto [fd, size] = GEODE_UNWRAP(doOpen(path));
+    auto buffer = BufferCache::get().getSized(size);
+    ssize_t bytesRead = read(fd, buffer.data(), size);
     close(fd);
 
-    if (bytesRead != fst.st_size) {
+    if (bytesRead != size) {
+        return Err("Failed to read from file '{}', errno: {}", path, errno);
+    }
+
+    return Ok(std::move(buffer));
+}
+
+static Result<OwnedBuffer> openAndReadDiskOwned(const char* path) {
+    auto [fd, size] = GEODE_UNWRAP(doOpen(path));
+
+    auto buffer = std::make_unique_for_overwrite<uint8_t[]>(size);
+    ssize_t bytesRead = read(fd, buffer.data(), size);
+    close(fd);
+
+    if (bytesRead != size) {
         return Err("Failed to read from file '{}', errno: {}", path, errno);
     }
 
@@ -106,6 +141,17 @@ Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
     } else {
         // relative path, read from .apk
         return openAndReadAAsset(path);
+    }
+}
+
+Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
+    std::string_view sv{path};
+    if (!sv.empty() && sv[0] == '/') {
+        // absolute path, read from disk
+        return openAndReadDiskOwned(path.c_str());
+    } else {
+        // relative path, read from .apk
+        return openAndReadAAssetOwned(path);
     }
 }
 

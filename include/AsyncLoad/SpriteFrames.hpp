@@ -12,19 +12,18 @@
 
 namespace AsyncLoad {
 
-/// Lifetimes of all strings inside are valid as long as the containing `SpriteFrameData` is alive.
 struct AL_DLL SpriteFrame {
-    geode::ZStringView name;
+    std::string name;
     cocos2d::CCPoint offset;
     cocos2d::CCSize sourceSize;
     cocos2d::CCRect textureRect;
-    std::vector<geode::ZStringView> aliases;
+    std::vector<std::string> aliases;
     bool textureRotated = false;
 };
 
 struct AL_DLL SpriteFrameMetadata {
     int format = -1;
-    geode::ZStringView textureFileName = "";
+    std::string textureFileName = "";
 };
 
 struct AL_DLL SpriteFrameData {

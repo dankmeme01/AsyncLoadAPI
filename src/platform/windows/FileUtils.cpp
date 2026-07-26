@@ -10,7 +10,7 @@ bool fileExists(ZStringView path) {
     return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
+Result<std::pair<HANDLE, LARGE_INTEGER>> doOpen(ZStringView path) {
     HANDLE file = CreateFileA(
         path.c_str(),
         GENERIC_READ,
@@ -30,6 +30,11 @@ Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
         CloseHandle(file);
         return Err("Failed to get file size for '{}', error: {}", path, GetLastError());
     }
+    return Ok(std::make_pair(file, filesize));
+}
+
+Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
+    auto [file, filesize] = GEODE_UNWRAP(doOpen(path));
 
     auto buffer = BufferCache::get().getSized(filesize.QuadPart);
     DWORD bytesRead;
@@ -40,6 +45,23 @@ Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
 
     CloseHandle(file);
     return Ok(std::move(buffer));
+}
+
+Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
+    auto [file, filesize] = GEODE_UNWRAP(doOpen(path));
+
+    auto buffer = std::make_unique_for_overwrite<uint8_t[]>(filesize.QuadPart);
+    DWORD bytesRead;
+    if (!ReadFile(file, buffer.get(), filesize.QuadPart, &bytesRead, nullptr) || bytesRead != filesize.QuadPart) {
+        CloseHandle(file);
+        return Err("Failed to read file '{}', error: {}", path, GetLastError());
+    }
+
+    CloseHandle(file);
+    return Ok(OwnedBuffer {
+        std::move(buffer),
+        static_cast<size_t>(filesize.QuadPart)
+    });
 }
 
 Result<FileMappedBuffer> getMappedFileImpl(ZStringView path) {

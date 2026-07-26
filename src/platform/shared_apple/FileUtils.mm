@@ -73,4 +73,18 @@ Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
     return Err("Failed to read path '{}': {}", path, [[error localizedDescription] UTF8String]);
 }
 
+Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
+    NSString* nsp = [NSString stringWithUTF8String:path.c_str()];
+    NSError* error = nil;
+    NSData* data = [NSData dataWithContentsOfFile:nsp options:NSDataReadingMappedIfSafe error:&error];
+
+    if (data) {
+        auto buffer = std::make_unique_for_overwrite<uint8_t[]>([data length]);
+        [data getBytes:buffer.data() length:length];
+        return Ok(std::move(buffer));
+    }
+
+    return Err("Failed to read path '{}': {}", path, [[error localizedDescription] UTF8String]);
+}
+
 }

@@ -289,7 +289,8 @@ struct ALManager::Impl : CCObject {
                 // everything loaded now!
                 AL_ASSERT(sheet.texture && sheet.spriteFrames);
 
-                addSpriteFrames(*sheet.spriteFrames, sheet.texture);
+                auto& sf = *sheet.spriteFrames;
+                addSpriteFrames(sf, sheet.texture);
 
                 sheet.state = PendingSpritesheetState::Finished;
                 if (sheet.callback) {

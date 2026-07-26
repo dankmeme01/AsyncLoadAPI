@@ -24,11 +24,31 @@ AL_DLL geode::Result<CachedBufferChunk> getFileData(
     bool assumeFullPath = false
 );
 
+struct OwnedBuffer {
+    std::unique_ptr<uint8_t[]> data;
+    size_t size;
+
+    std::span<uint8_t> span() const {
+        return std::span<uint8_t>(data.get(), size);
+    }
+};
+
+/// Rewrite of CCFileUtils::getFileData, fast and thread safe, and with good error reporting.
+/// Unlike `getFileData`, returns an `OwnedBuffer` instead of a `CachedBufferChunk`.
+AL_DLL geode::Result<OwnedBuffer> getFileDataOwned(
+    geode::ZStringView path,
+    bool assumeFullPath = false
+);
+
 /// Alternative to getFileData that does not read the entire file into memory, instead using memory mapping.
 AL_DLL geode::Result<FileMappedBuffer> getMappedFile(
     geode::ZStringView path,
     bool assumeFullPath = false
 );
+
+/// Gets the cocos search paths in a thread-safe way, allowing you to manually do file/path interactions,
+/// without needing the main thread to access CCFileUtils.
+AL_DLL std::shared_ptr<std::vector<std::string>> getSearchPaths();
 
 AL_DLL size_t getFPFFCacheHits();
 AL_DLL size_t getFPFFCacheMisses();
