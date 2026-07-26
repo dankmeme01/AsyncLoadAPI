@@ -1,6 +1,7 @@
 #include <AsyncLoad/Manager.hpp>
 #include <AsyncLoad/FileUtils.hpp>
 #include <asp/thread/ThreadPool.hpp>
+#include <Geode/utils/StringMap.hpp>
 #include "ManagerTask.hpp"
 
 using namespace geode::prelude;
@@ -36,6 +37,30 @@ void TaskHandle::cancel() {
     }
 }
 
+MultiTaskHandle::~MultiTaskHandle() {
+    this->cancel();
+}
+
+void MultiTaskHandle::leak() {
+    for (auto& task : m_tasks) {
+        task.leak();
+    }
+    m_tasks.clear();
+}
+
+void MultiTaskHandle::cancel() {
+    for (auto& task : m_tasks) {
+        task.cancel();
+    }
+    m_tasks.clear();
+}
+
+void MultiTaskHandle::addTask(TaskHandle handle) {
+    if (handle.id() != 0) {
+        m_tasks.push_back(std::move(handle));
+    }
+}
+
 // ALManager task
 
 
@@ -43,11 +68,25 @@ void TaskHandle::cancel() {
 
 
 struct ALManager::Impl : CCObject {
+    enum class PendingSpritesheetState {
+        None,
+        OneLoaded,
+        Finished,
+        Errored,
+    };
+    struct PendingSpritesheet {
+        Ref<CCTexture2D> texture;
+        std::optional<SpriteFrameData> spriteFrames;
+        Function<void(Result<>)> callback;
+        PendingSpritesheetState state = PendingSpritesheetState::None;
+    };
+
     std::vector<asp::Thread<>> m_threads;
     asp::Mutex<std::unordered_map<uint64_t, std::shared_ptr<Task>>> m_activeTasks;
     asp::Channel<std::shared_ptr<Task>> m_taskQueue;
     asp::Channel<std::shared_ptr<Task>> m_MTtaskQueue;
     std::vector<SmartPBO> m_pbos;
+    utils::StringMap<PendingSpritesheet> m_spriteSheets;
 
     Impl() {
         // spawn more threads than available, because some threads may be blocked on IO operations n stuff
@@ -162,6 +201,103 @@ struct ALManager::Impl : CCObject {
             AL_TRACE("ALManager::update took {}", taken);
         }
     }
+
+    MultiTaskHandle loadSpritesheet(std::string name, Function<void(Result<>)> callback) {
+        auto pngPath = fmt::format("{}.png", name);
+        auto plistPath = fmt::format("{}.plist", name);
+        gd::string fullPlistPath = fullPathForFilename(plistPath);
+
+        auto sfc = CCSpriteFrameCache::get();
+        // TODO: not sure this check is correctly and what path should be used
+        if (sfc->m_pLoadedFileNames->contains(fullPlistPath)) {
+            // already loaded!
+            callback(Ok());
+            return {};
+        }
+
+        m_spriteSheets.emplace(name, PendingSpritesheet{
+            .texture = nullptr,
+            .spriteFrames = std::nullopt,
+            .callback = std::move(callback),
+        });
+
+        MultiTaskHandle handle;
+
+        // Load the texture first, since this step may succeed immediately if cached
+        auto& am = ALManager::get();
+        handle.addTask(am.loadTexture(pngPath, [this, name = std::string{name}](Result<Ref<CCTexture2D>> result) {
+            this->pendingSpritesheetAdvanceTexture(name, std::move(result));
+        }));
+
+        // and then start loading the plist in background
+        handle.addTask(am.submitSpriteFramesLoad({
+            .path = plistPath,
+            .isFullPath = false,
+            .callback = [this, name = std::string{name}](Result<SpriteFrameData> result) {
+                this->pendingSpritesheetAdvancePlist(name, std::move(result));
+            },
+        }));
+
+        return handle;
+    }
+
+    void pendingSpritesheetAdvanceTexture(std::string_view name, Result<Ref<CCTexture2D>> result) {
+        auto ps = m_spriteSheets.find(name);
+        AL_ASSERT(ps != m_spriteSheets.end());
+        auto& pending = ps->second;
+
+        if (!result) {
+            this->pendingSpritesheetError(pending, fmt::format("Texture load failed: {}", result.unwrapErr()));
+            return;
+        }
+        pending.texture = std::move(*result);
+        pendingSpritesheetAdvance(pending);
+    }
+
+    void pendingSpritesheetAdvancePlist(std::string_view name, Result<SpriteFrameData> result) {
+        auto ps = m_spriteSheets.find(name);
+        AL_ASSERT(ps != m_spriteSheets.end());
+        auto& pending = ps->second;
+
+        if (!result) {
+            this->pendingSpritesheetError(pending, fmt::format("Plist load failed: {}", result.unwrapErr()));
+            return;
+        }
+        pending.spriteFrames = std::move(*result);
+        pendingSpritesheetAdvance(pending);
+    }
+
+    void pendingSpritesheetError(PendingSpritesheet& sheet, std::string_view error) {
+        sheet.state = PendingSpritesheetState::Errored;
+        if (sheet.callback) {
+            sheet.callback(Err(fmt::format("Failed to load spritesheet: {}", error)));
+        }
+    }
+
+    void pendingSpritesheetAdvance(PendingSpritesheet& sheet) {
+        switch (sheet.state) {
+            case PendingSpritesheetState::Errored: break;
+
+            case PendingSpritesheetState::Finished:
+                AL_ASSERT(false && "unreachable condition");
+
+            case PendingSpritesheetState::None: {
+                sheet.state = PendingSpritesheetState::OneLoaded;
+            } break;
+
+            case PendingSpritesheetState::OneLoaded: {
+                // everything loaded now!
+                AL_ASSERT(sheet.texture && sheet.spriteFrames);
+
+                addSpriteFrames(*sheet.spriteFrames, sheet.texture);
+
+                sheet.state = PendingSpritesheetState::Finished;
+                if (sheet.callback) {
+                    sheet.callback(Ok());
+                }
+            } break;
+        }
+    }
 };
 
 ALManager::~ALManager() {}
@@ -209,8 +345,8 @@ TaskHandle ALManager::loadTexture(ZStringView path, TextureLoadParams::Callback 
     }
 
     return this->submitTextureLoad(TextureLoadParams{
-        .path = path,
-        .isFullPath = fullPath,
+        .path = fp,
+        .isFullPath = true,
         .callback = [cb = std::move(callback), fp = std::move(fp), tc](auto result) mutable {
             if (!result) return cb(std::move(result));
 
@@ -219,6 +355,10 @@ TaskHandle ALManager::loadTexture(ZStringView path, TextureLoadParams::Callback 
             cb(Ok(tex));
         },
     });
+}
+
+MultiTaskHandle ALManager::loadSpritesheet(std::string_view name, Function<void(Result<>)> callback) {
+    return m_impl->loadSpritesheet(std::string{name}, std::move(callback));
 }
 
 void ALManager::cancelTask(uint64_t id) {

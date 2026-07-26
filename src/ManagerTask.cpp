@@ -508,6 +508,7 @@ TaskAdvanceResult SpriteFramesTask::advance(bool mainThread) {
                 this->fail(fmt::format("Failed to parse sprite frames (path: {}): {}", m_path, result.unwrapErr()));
                 return TaskAdvanceResult::Finished;
             }
+            m_spriteFrames = std::move(*result);
             this->setState(SpriteFramesReady);
         } break;
 

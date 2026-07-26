@@ -82,6 +82,23 @@ private:
     uint64_t m_id = 0;
 };
 
+struct [[nodiscard("call .leak() or store MultiTaskHandle to not cancel it immediately")]] AL_DLL MultiTaskHandle {
+    MultiTaskHandle() {}
+    MultiTaskHandle(const MultiTaskHandle&) = delete;
+    MultiTaskHandle& operator=(const MultiTaskHandle&) = delete;
+    MultiTaskHandle(MultiTaskHandle&&) noexcept = default;
+    MultiTaskHandle& operator=(MultiTaskHandle&&) noexcept = default;
+    ~MultiTaskHandle();
+
+    void leak();
+    void cancel();
+
+    void addTask(TaskHandle handle);
+
+private:
+    std::vector<TaskHandle> m_tasks;
+};
+
 class AL_DLL ALManager final {
 public:
     static ALManager& get();
@@ -98,7 +115,13 @@ public:
     // In that case, they may return a blank TaskHandle.
 
     /// Loads a CCTexture2D* from the given path, invokes callback on main thread (or instantly) when done or errored.
+    /// Uses CCTextureCache to skip loading if the texture is already loaded.
     TaskHandle loadTexture(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath = false);
+
+    /// Loads a spritesheet file from the given path, invokes callback on main thread (or instantly) when done or errored.
+    /// This loads the appropriate .png and .plist files in parallel and uses caches to avoid excessive loading.
+    /// You must pass the name without any extension to this function.
+    MultiTaskHandle loadSpritesheet(std::string_view name, geode::Function<void(geode::Result<>)> callback);
 
     // Submission APIs - low-level APIs for high control.
     // They are fully thread-safe, and enqueue operations to happen in the background, giving you a handle to cancel it and letting you pass a callback.
