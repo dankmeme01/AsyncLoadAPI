@@ -12,11 +12,6 @@
     "developer": "dankmeme",
     "description": "",
     "dependencies": {},
-    "api": {
-        "include": [
-            "include/*.hpp"
-        ]
-    },
     "settings": {
         "use-pbos": {
             "type": "bool",

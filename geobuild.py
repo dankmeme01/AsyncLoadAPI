@@ -19,6 +19,7 @@ def main(build: Build):
         "required": False,
     })
     build.relax_geode_requirement()
+    build.add_api_headers("include/**/*.hpp")
 
     if config.platform.is_apple():
         build.add_source_dir("src/platform/shared_apple")
