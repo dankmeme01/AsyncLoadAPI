@@ -76,6 +76,8 @@ struct [[nodiscard("call .leak() or store TaskHandle to not cancel it immediatel
     void leak();
     void cancel();
 
+    uint64_t id() const { return m_id; }
+
 private:
     uint64_t m_id = 0;
 };

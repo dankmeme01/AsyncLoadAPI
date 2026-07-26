@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Geode/Result.hpp>
+#include "config.hpp"
 #include <span>
 #include <stdint.h>
 #include <stddef.h>
@@ -15,7 +16,7 @@ using FileMappedBufferFd = int;
 static int INVALID_FD = -1;
 #endif
 
-class FileMappedBuffer {
+class AL_DLL FileMappedBuffer {
 public:
     /// Expects file fd on posix or HANDLE casted to int on windows
     /// Takes ownership of the fd, will unmap and close it when the buffer is destroyed
