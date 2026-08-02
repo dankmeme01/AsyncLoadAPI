@@ -79,6 +79,7 @@ struct ALManager::Impl : CCObject {
         std::optional<SpriteFrameData> spriteFrames;
         Function<void(Result<>)> callback;
         PendingSpritesheetState state = PendingSpritesheetState::None;
+        bool callbackInvoked = false;
     };
 
     std::vector<asp::Thread<>> m_threads;
@@ -181,6 +182,8 @@ struct ALManager::Impl : CCObject {
                     task->invokeCallback();
                     auto active = m_activeTasks.lock();
                     active->erase(task->m_id);
+                } else {
+                    task->invokeCancelled();
                 }
             } else {
                 // task needs to continue running but does not require the main thread, so push it back to the worker threads
@@ -202,10 +205,17 @@ struct ALManager::Impl : CCObject {
         }
     }
 
+    void setCancelCallback(uint64_t id, Function<void()> callback) {
+        auto active = m_activeTasks.lock();
+        auto it = active->find(id);
+        if (it != active->end()) {
+            it->second->m_onCancellation = std::move(callback);
+        }
+    }
+
     MultiTaskHandle loadSpritesheet(std::string name, Function<void(Result<>)> callback) {
         auto pngPath = fmt::format("{}.png", name);
         auto plistPath = fmt::format("{}.plist", name);
-        gd::string fullPlistPath = fullPathForFilename(plistPath);
 
         // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
         // without running fullPathForFilename. we will replicate this and also use it as a unique key.
@@ -235,18 +245,26 @@ struct ALManager::Impl : CCObject {
 
         // Load the texture first, since this step may succeed immediately if cached
         auto& am = ALManager::get();
-        handle.addTask(am.loadTexture(pngPath, [this, name = std::string{plistKey}](Result<Ref<CCTexture2D>> result) {
+        auto textureTask = am.loadTexture(pngPath, [this, name = std::string{plistKey}](Result<Ref<CCTexture2D>> result) {
             this->pendingSpritesheetAdvanceTexture(name, std::move(result));
-        }));
+        });
+        this->setCancelCallback(textureTask.id(), [this, name = std::string{plistKey}]() {
+            this->pendingSpritesheetCancel(name);
+        });
+        handle.addTask(std::move(textureTask));
 
         // and then start loading the plist in background
-        handle.addTask(am.submitSpriteFramesLoad({
+        auto framesTask = am.submitSpriteFramesLoad({
             .path = plistPath,
             .isFullPath = false,
             .callback = [this, name = std::string{plistKey}](Result<SpriteFrameData> result) {
                 this->pendingSpritesheetAdvancePlist(name, std::move(result));
             },
-        }));
+        });
+        this->setCancelCallback(framesTask.id(), [this, name = std::string{plistKey}]() {
+            this->pendingSpritesheetCancel(name);
+        });
+        handle.addTask(std::move(framesTask));
 
         return handle;
     }
@@ -281,8 +299,9 @@ struct ALManager::Impl : CCObject {
         bool first = sheet.state == PendingSpritesheetState::None;
 
         sheet.state = PendingSpritesheetState::Errored;
-        if (sheet.callback && first) {
+        if (sheet.callback && !sheet.callbackInvoked) {
             sheet.callback(Err(fmt::format("Failed to load spritesheet: {}", error)));
+            sheet.callbackInvoked = true;
         }
 
         // if we are NOT the first subtask of the two, then remove from the map since no one else could remove it afterwards
@@ -318,12 +337,21 @@ struct ALManager::Impl : CCObject {
                 if (sheet.callback) {
                     sheet.callback(Ok());
                 }
+                sheet.callbackInvoked = true;
             } break;
         }
 
         // if we are the last subtask to finish, also remove entry from the map
         if (isSecond) {
             m_spriteSheets.erase(name);
+        }
+    }
+
+    void pendingSpritesheetCancel(std::string_view name) {
+        auto it = m_spriteSheets.find(name);
+        if (it != m_spriteSheets.end()) {
+            auto& pending = it->second;
+            pendingSpritesheetError(pending, it, "load cancelled");
         }
     }
 };

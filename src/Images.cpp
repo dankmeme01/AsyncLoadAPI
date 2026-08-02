@@ -193,9 +193,9 @@ Result<RawImage> RawImage::create(cocos2d::CCImage* image, bool takeOwneship) {
 
     return Ok(RawImage {
         .data = std::move(buf),
-        .hasAlpha = alpha,
         .width = (uint32_t)w,
         .height = (uint32_t)h,
+        .hasAlpha = alpha,
     });
 }
 
@@ -226,9 +226,9 @@ Result<RawImage> RawImage::create(std::span<const uint8_t> data) {
 
     return Ok(RawImage {
         .data = std::move(buf),
-        .hasAlpha = img->hasAlpha,
         .width = img->width,
         .height = img->height,
+        .hasAlpha = img->hasAlpha,
     });
 }
 

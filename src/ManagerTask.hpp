@@ -72,6 +72,7 @@ struct Task {
     Atomic<TaskState> m_state{TaskState::Invalid};
     Atomic<TaskGoal> m_goal;
     Atomic<bool> m_cancelled = false;
+    Function<void()> m_onCancellation;
     std::string m_error;
 
     Task() : m_id(utils::random::nextU64()), m_startTime(asp::Instant::now()) {}
@@ -102,6 +103,12 @@ struct Task {
 
     void cancel() {
         m_cancelled.store(true, std::memory_order::release);
+    }
+
+    void invokeCancelled() {
+        if (m_onCancellation) {
+            m_onCancellation();
+        }
     }
 
     void fail(std::string message) {
