@@ -82,14 +82,33 @@ static Result<std::pair<int, size_t>> doOpen(ZStringView path) {
     return Ok(std::make_pair(fd, fst.st_size));
 }
 
+static Result<> readInto(int fd, void* buffer, size_t size) {
+    size_t totalRead = 0;
+    while (totalRead < size) {
+        auto bytesRead = read(fd, (uint8_t*)buffer + totalRead, size - totalRead);
+        if (bytesRead == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return Err("read failed, errno: {}", errno);
+        } else if (bytesRead == 0) {
+            return Err("read returned EOF after reading {}/{} bytes", totalRead, size);
+        }
+
+        totalRead += bytesRead;
+    }
+
+    return Ok();
+}
+
 static Result<CachedBufferChunk> openAndReadDisk(const char* path) {
     auto [fd, size] = GEODE_UNWRAP(doOpen(path));
     auto buffer = BufferCache::get().getSized(size);
-    ssize_t bytesRead = read(fd, buffer.data(), size);
+    auto result = readInto(fd, buffer.data(), size);
     close(fd);
 
-    if (bytesRead != size) {
-        return Err("Failed to read from file '{}', errno: {}", path, errno);
+    if (!result) {
+        return Err("Failed to read from file '{}': {}", path, result.unwrapErr());
     }
 
     return Ok(std::move(buffer));
@@ -99,11 +118,11 @@ static Result<OwnedBuffer> openAndReadDiskOwned(const char* path) {
     auto [fd, size] = GEODE_UNWRAP(doOpen(path));
 
     auto buffer = std::make_unique_for_overwrite<uint8_t[]>(size);
-    ssize_t bytesRead = read(fd, buffer.data(), size);
+    auto result = readInto(fd, buffer.get(), size);
     close(fd);
 
-    if (bytesRead != size) {
-        return Err("Failed to read from file '{}', errno: {}", path, errno);
+    if (!result) {
+        return Err("Failed to read from file '{}': {}", path, result.unwrapErr());
     }
 
     return Ok(std::move(buffer));

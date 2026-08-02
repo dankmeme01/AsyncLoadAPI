@@ -79,7 +79,8 @@ Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
     NSData* data = [NSData dataWithContentsOfFile:nsp options:NSDataReadingMappedIfSafe error:&error];
 
     if (data) {
-        auto buffer = std::make_unique_for_overwrite<uint8_t[]>([data length]);
+        auto length = [data length];
+        auto buffer = std::make_unique_for_overwrite<uint8_t[]>(length);
         [data getBytes:buffer.data() length:length];
         return Ok(std::move(buffer));
     }
