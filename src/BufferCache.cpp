@@ -226,8 +226,8 @@ void BufferCache::freeToAccomodateFor(size_t alloc) {
         auto it = cache->begin() + idx;
         it->m_data.reset();
         freedBytes += it->m_size;
+        untilLimit += it->m_size;
         cache->erase(it);
-        untilLimit += freedBytes;
     }
     cache.unlock();
 

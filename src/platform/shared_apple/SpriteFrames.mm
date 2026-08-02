@@ -12,15 +12,10 @@ namespace AsyncLoad {
 
 struct SpriteFrameData::Impl {
     SpriteFrameMetadata metadata;
-    void* dictRoot = nullptr;
     std::vector<SpriteFrame> frames;
 };
 
-SpriteFrameData::~SpriteFrameData() {
-    if (m_impl->dictRoot) {
-        CFRelease(m_impl->dictRoot);
-    }
-}
+SpriteFrameData::~SpriteFrameData() {}
 
 // Helper to convert NSString to string_view without copying
 static inline std::string_view to_view(NSString* s) {
@@ -236,8 +231,6 @@ Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, bool ownBuffe
 
             sfdata->frames.push_back(std::move(sframe));
         }
-
-        sfdata->dictRoot = (void*)CFRetain(root);
 
         return Ok(std::move(sfdata));
     }

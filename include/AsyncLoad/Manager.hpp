@@ -116,11 +116,13 @@ public:
 
     /// Loads a CCTexture2D* from the given path, invokes callback on main thread (or instantly) when done or errored.
     /// Uses CCTextureCache to skip loading if the texture is already loaded.
+    /// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
     TaskHandle loadTexture(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath = false);
 
     /// Loads a spritesheet file from the given path, invokes callback on main thread (or instantly) when done or errored.
     /// This loads the appropriate .png and .plist files in parallel and uses caches to avoid excessive loading.
     /// You must pass the name without any extension to this function.
+    /// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
     MultiTaskHandle loadSpritesheet(std::string_view name, geode::Function<void(geode::Result<>)> callback);
 
     // Submission APIs - low-level APIs for high control.

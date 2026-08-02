@@ -165,7 +165,7 @@ struct TextureTask final : Task {
     TaskAdvanceResult doWriteIntoAsyncPBO();
     TaskAdvanceResult startPBOLoad();
     TaskAdvanceResult startNoPBOLoad();
-    void doFinalizeAsyncPBO();
+    TaskAdvanceResult doFinalizeAsyncPBO();
 
     Ref<CCTexture2D> finalizeTexture(GLuint tex);
 };

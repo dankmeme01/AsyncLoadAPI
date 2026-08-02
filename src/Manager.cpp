@@ -256,12 +256,12 @@ struct ALManager::Impl : CCObject {
         AL_ASSERT(ps != m_spriteSheets.end());
         auto& pending = ps->second;
 
-        if (!result) {
-            this->pendingSpritesheetError(pending, fmt::format("Texture load failed: {}", result.unwrapErr()));
-            return;
+        if (result) {
+            pending.texture = std::move(*result);
+            this->pendingSpritesheetAdvance(pending, name);
+        } else {
+            this->pendingSpritesheetError(pending, ps, fmt::format("Texture load failed: {}", result.unwrapErr()));
         }
-        pending.texture = std::move(*result);
-        pendingSpritesheetAdvance(pending, name);
     }
 
     void pendingSpritesheetAdvancePlist(std::string_view name, Result<SpriteFrameData> result) {
@@ -269,24 +269,35 @@ struct ALManager::Impl : CCObject {
         AL_ASSERT(ps != m_spriteSheets.end());
         auto& pending = ps->second;
 
-        if (!result) {
-            this->pendingSpritesheetError(pending, fmt::format("Plist load failed: {}", result.unwrapErr()));
-            return;
+        if (result) {
+            pending.spriteFrames = std::move(*result);
+            this->pendingSpritesheetAdvance(pending, name);
+        } else {
+            this->pendingSpritesheetError(pending, ps, fmt::format("Plist load failed: {}", result.unwrapErr()));
         }
-        pending.spriteFrames = std::move(*result);
-        pendingSpritesheetAdvance(pending, name);
     }
 
-    void pendingSpritesheetError(PendingSpritesheet& sheet, std::string_view error) {
+    void pendingSpritesheetError(PendingSpritesheet& sheet, auto it, std::string_view error) {
+        bool first = sheet.state == PendingSpritesheetState::None;
+
         sheet.state = PendingSpritesheetState::Errored;
-        if (sheet.callback) {
+        if (sheet.callback && first) {
             sheet.callback(Err(fmt::format("Failed to load spritesheet: {}", error)));
+        }
+
+        // if we are NOT the first subtask of the two, then remove from the map since no one else could remove it afterwards
+        if (!first) {
+            m_spriteSheets.erase(it);
         }
     }
 
     void pendingSpritesheetAdvance(PendingSpritesheet& sheet, std::string_view name) {
+        bool isSecond = false;
+
         switch (sheet.state) {
-            case PendingSpritesheetState::Errored: break;
+            case PendingSpritesheetState::Errored: {
+                isSecond = true;
+            } break;
 
             case PendingSpritesheetState::Finished:
                 AL_ASSERT(false && "unreachable condition");
@@ -297,6 +308,7 @@ struct ALManager::Impl : CCObject {
 
             case PendingSpritesheetState::OneLoaded: {
                 // everything loaded now!
+                isSecond = true;
                 AL_ASSERT(sheet.texture && sheet.spriteFrames);
 
                 auto& sf = *sheet.spriteFrames;
@@ -307,6 +319,11 @@ struct ALManager::Impl : CCObject {
                     sheet.callback(Ok());
                 }
             } break;
+        }
+
+        // if we are the last subtask to finish, also remove entry from the map
+        if (isSecond) {
+            m_spriteSheets.erase(name);
         }
     }
 };

@@ -20,9 +20,9 @@ AL_DLL void widenRGBtoRGBA(
 struct AL_DLL RawImage {
     /// Raw byte vector containing the image pixels.
     CachedBuffer data;
-    bool hasAlpha = false;
     uint32_t width = 0;
     uint32_t height = 0;
+    bool hasAlpha = false;
 
     size_t sizeBytes() const {
         return width * height * (3 + (size_t)hasAlpha);

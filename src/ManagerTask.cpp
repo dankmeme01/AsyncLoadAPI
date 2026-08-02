@@ -127,6 +127,7 @@ TaskAdvanceResult ImageTask::advance(bool mainThread) {
 
         case ImageRead: {
             auto res = RawImage::create(m_imageData.span());
+            m_imageData = {};
             if (!res) {
                 this->fail(fmt::format("failed to decode image: {}", res.unwrapErr()));
                 return TaskAdvanceResult::Finished;
@@ -246,6 +247,7 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
                 this->fail(fmt::format("failed to decode image: {}", res.unwrapErr()));
                 return TaskAdvanceResult::Finished;
             }
+            m_imageData = CachedBufferChunk{}; // release buffer
             m_image = std::move(*res);
             m_image->premultiply();
             this->setState(ImageReady);
@@ -271,7 +273,7 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
         } break;
 
         case AsyncPboDone: {
-            this->doFinalizeAsyncPBO();
+            return this->doFinalizeAsyncPBO();
         } break;
 
         default: {
@@ -372,7 +374,7 @@ TaskAdvanceResult TextureTask::doWriteIntoAsyncPBO() {
     return TaskAdvanceResult::RequiresMainThread;
 }
 
-void TextureTask::doFinalizeAsyncPBO() {
+TaskAdvanceResult TextureTask::doFinalizeAsyncPBO() {
     AL_BENCHMARK(clearGLError());
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo.get());
     GLboolean ok = glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
@@ -396,6 +398,7 @@ void TextureTask::doFinalizeAsyncPBO() {
     m_glTex = 0;
 
     this->setState(TaskState::TextureReady);
+    return TaskAdvanceResult::Finished;
 }
 
 TaskAdvanceResult TextureTask::startPBOLoad() {
@@ -418,7 +421,7 @@ TaskAdvanceResult TextureTask::startPBOLoad() {
     ALManager::get().returnPBO(std::move(m_glPbo));
 
     this->setState(TaskState::TextureReady);
-    return TaskAdvanceResult::RequiresMainThread;
+    return TaskAdvanceResult::Finished;
 }
 
 TaskAdvanceResult TextureTask::startNoPBOLoad() {
