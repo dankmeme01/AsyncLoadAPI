@@ -1,4 +1,5 @@
 #include <AsyncLoad/SpriteFrames.hpp>
+#include <AsyncLoad/FileUtils.hpp>
 
 using namespace geode::prelude;
 
@@ -46,6 +47,8 @@ void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* textur
     }
 
     sfcache->m_pLoadedFileNames->insert(gd::string{key});
+    // for good measure, insert full path too
+    sfcache->m_pLoadedFileNames->insert(fullPathForFilename(key));
 }
 
 }
