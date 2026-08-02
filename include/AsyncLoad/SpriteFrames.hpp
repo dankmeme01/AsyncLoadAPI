@@ -52,7 +52,8 @@ private:
 AL_DLL geode::Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, bool passBufferOwnership = false);
 
 /// Adds sprite frames parsed from `parseSpriteFrames` into `CCSpriteFrameCache`.
+/// `key` is the key that will be used for sprite frame cache, typically it is the filename, aka `spritesheet.plist`
 /// This is not thread-safe.
-AL_DLL void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* texture);
+AL_DLL void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* texture, std::string_view key);
 
 }

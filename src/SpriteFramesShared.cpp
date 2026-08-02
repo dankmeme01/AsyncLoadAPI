@@ -4,7 +4,7 @@ using namespace geode::prelude;
 
 namespace AsyncLoad {
 
-void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* texture) {
+void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* texture, std::string_view key) {
     auto& fs = frames.getFrames();
 
     auto sfcache = CCSpriteFrameCache::get();
@@ -45,7 +45,7 @@ void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* textur
         spriteFrame->release();
     }
 
-    sfcache->m_pLoadedFileNames->insert(frames.getMetadata().textureFileName);
+    sfcache->m_pLoadedFileNames->insert(gd::string{key});
 }
 
 }

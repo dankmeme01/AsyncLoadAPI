@@ -207,25 +207,35 @@ struct ALManager::Impl : CCObject {
         auto plistPath = fmt::format("{}.plist", name);
         gd::string fullPlistPath = fullPathForFilename(plistPath);
 
+        // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
+        // without running fullPathForFilename. we will replicate this and also use it as a unique key.
+        auto plistKey = gd::string{plistPath};
+
         auto sfc = CCSpriteFrameCache::get();
-        // TODO: not sure this check is correctly and what path should be used
-        if (sfc->m_pLoadedFileNames->contains(fullPlistPath)) {
+        if (sfc->m_pLoadedFileNames->contains(plistKey)) {
             // already loaded!
             callback(Ok());
             return {};
         }
 
-        m_spriteSheets.emplace(name, PendingSpritesheet{
+        auto [_, inserted] = m_spriteSheets.emplace(std::string{plistKey}, PendingSpritesheet{
             .texture = nullptr,
             .spriteFrames = std::nullopt,
             .callback = std::move(callback),
         });
+        if (!inserted) {
+            // already loading!
+            // TODO: we don't want this to return {} because it can be taken as an error,
+            // instead we want some way to return a task handle attached to the currently running task
+            log::warn("ALManager: loadSpritesheet called for {} while it is already loading!", name);
+            return {};
+        }
 
         MultiTaskHandle handle;
 
         // Load the texture first, since this step may succeed immediately if cached
         auto& am = ALManager::get();
-        handle.addTask(am.loadTexture(pngPath, [this, name = std::string{name}](Result<Ref<CCTexture2D>> result) {
+        handle.addTask(am.loadTexture(pngPath, [this, name = std::string{plistKey}](Result<Ref<CCTexture2D>> result) {
             this->pendingSpritesheetAdvanceTexture(name, std::move(result));
         }));
 
@@ -233,7 +243,7 @@ struct ALManager::Impl : CCObject {
         handle.addTask(am.submitSpriteFramesLoad({
             .path = plistPath,
             .isFullPath = false,
-            .callback = [this, name = std::string{name}](Result<SpriteFrameData> result) {
+            .callback = [this, name = std::string{plistKey}](Result<SpriteFrameData> result) {
                 this->pendingSpritesheetAdvancePlist(name, std::move(result));
             },
         }));
@@ -251,7 +261,7 @@ struct ALManager::Impl : CCObject {
             return;
         }
         pending.texture = std::move(*result);
-        pendingSpritesheetAdvance(pending);
+        pendingSpritesheetAdvance(pending, name);
     }
 
     void pendingSpritesheetAdvancePlist(std::string_view name, Result<SpriteFrameData> result) {
@@ -264,7 +274,7 @@ struct ALManager::Impl : CCObject {
             return;
         }
         pending.spriteFrames = std::move(*result);
-        pendingSpritesheetAdvance(pending);
+        pendingSpritesheetAdvance(pending, name);
     }
 
     void pendingSpritesheetError(PendingSpritesheet& sheet, std::string_view error) {
@@ -274,7 +284,7 @@ struct ALManager::Impl : CCObject {
         }
     }
 
-    void pendingSpritesheetAdvance(PendingSpritesheet& sheet) {
+    void pendingSpritesheetAdvance(PendingSpritesheet& sheet, std::string_view name) {
         switch (sheet.state) {
             case PendingSpritesheetState::Errored: break;
 
@@ -290,7 +300,7 @@ struct ALManager::Impl : CCObject {
                 AL_ASSERT(sheet.texture && sheet.spriteFrames);
 
                 auto& sf = *sheet.spriteFrames;
-                addSpriteFrames(sf, sheet.texture);
+                addSpriteFrames(sf, sheet.texture, name);
 
                 sheet.state = PendingSpritesheetState::Finished;
                 if (sheet.callback) {
