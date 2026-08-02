@@ -5,9 +5,17 @@
 
 namespace AsyncLoad {
 
-AL_DLL void premultiplyAlpha(void* destination, const void* source, size_t byteCount);
+AL_DLL void premultiplyAlpha(
+    void* AL_RESTRICT destination,
+    const void* AL_RESTRICT source,
+    size_t byteCount
+);
 AL_DLL void premultiplyAlphaInplace(void* buffer, size_t byteCount);
-AL_DLL void widenRGBtoRGBA(void* destination, const void* source, size_t pixelCount);
+AL_DLL void widenRGBtoRGBA(
+    void* AL_RESTRICT destination,
+    const void* AL_RESTRICT source,
+    size_t pixelCount
+);
 
 struct AL_DLL RawImage {
     /// Raw byte vector containing the image pixels.

@@ -33,7 +33,7 @@ static void premultiplyIntoScalar(const void* source, void* dest, size_t bytes) 
     }
 }
 
-static void widenRGBtoRGBAScalar(const void* source, void* dest, size_t pixels) {
+static void widenRGBtoRGBAScalar(const void* AL_RESTRICT source, void* AL_RESTRICT dest, size_t pixels) {
     auto src = static_cast<const uint8_t*>(source);
     auto dst = static_cast<uint8_t*>(dest);
 
@@ -96,11 +96,13 @@ void premultiplyIntoSSSE3(const void* source, void* dest, size_t bytes) {
 }
 
 static __attribute__((target("ssse3")))
-void widenRGBtoRGBA_SSSE3(const void* src_, void* dst_, size_t numPixels) {
+void widenRGBtoRGBA_SSSE3(const void* AL_RESTRICT src_, void* AL_RESTRICT dst_, size_t numPixels) {
     auto src = static_cast<const uint8_t*>(src_);
     auto dst = static_cast<uint8_t*>(dst_);
 
-    size_t simdPixels = numPixels / 4 * 4;
+    // with ssse3 instructions we can process up to 4 pixels at a time which is 12 input bytes,
+    // however we are reading a 16-byte long lane, so we need there to be at least 4 bytes (2 pixels) left to read afterwards
+    size_t simdPixels = (numPixels >= 6) ? ((numPixels - 2) / 4 * 4) : 0;
 
     __m128i shuffle_mask = _mm_set_epi8(
         0x80, 11, 10, 9,  // P3: A, B, G, R
@@ -141,8 +143,8 @@ void premultiplyInto(const void* source, void* dest, size_t bytes) {
     premultiplyIntoScalar(source, dest, bytes);
 }
 
-
-void premultiplyAlpha(void* destination, const void* source, size_t byteCount) {
+// insert restrict here but in reality premultiplyInto does not care in the current impl
+void premultiplyAlpha(void* AL_RESTRICT destination, const void* AL_RESTRICT source, size_t byteCount) {
     premultiplyInto(source, destination, byteCount);
 }
 
@@ -150,7 +152,7 @@ void premultiplyAlphaInplace(void* buffer, size_t byteCount) {
     premultiplyInto(buffer, buffer, byteCount);
 }
 
-void widenRGBtoRGBA(void* destination, const void* source, size_t pixelCount) {
+void widenRGBtoRGBA(void* AL_RESTRICT destination, const void* AL_RESTRICT source, size_t pixelCount) {
 #ifdef GEODE_IS_WINDOWS
     if (g_ssse3) {
         widenRGBtoRGBA_SSSE3(source, destination, pixelCount);

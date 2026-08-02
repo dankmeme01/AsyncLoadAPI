@@ -14,3 +14,10 @@
 # endif
 #endif
 
+
+// various macros
+#ifdef __clang__
+# define AL_RESTRICT __restrict__
+#else
+# define AL_RESTRICT __restrict
+#endif
