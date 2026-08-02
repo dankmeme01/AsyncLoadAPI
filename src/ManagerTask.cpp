@@ -83,7 +83,7 @@ ImageTask::ImageTask(ImageLoadParams&& params) : Task() {
 
     if (!params.data.empty()) {
         // user provided raw image data, no need to read any files
-        m_state.store(TaskState::ImageReady, std::memory_order::relaxed);
+        m_state.store(TaskState::ImageRead, std::memory_order::relaxed);
         m_imageData = std::move(params.data);
         return;
     }
