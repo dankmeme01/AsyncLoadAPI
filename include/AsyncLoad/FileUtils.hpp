@@ -8,7 +8,7 @@
 namespace AsyncLoad {
 
 /// Rewrite of CCFileUtils::isFileExist that does not open any files,
-// is fast and correct, unlike cocos which may fail and return false on relative paths on apple.
+/// is fast and correct, unlike cocos which may fail and return false on relative paths on apple.
 AL_DLL bool fileExists(geode::ZStringView path);
 
 /// Rewrite of CCFileUtils::getPathForFilename, saner than cocos
