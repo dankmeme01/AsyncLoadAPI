@@ -6,7 +6,7 @@
 #undef MY_MOD_ID
 #define MY_MOD_ID "dankmeme.async-load-api"
 
-namespace AsyncLoad  {
+namespace AsyncLoad {
 
 /// Asynchronously loads the texture by the given path (must be a `.png` file) and puts it into `CCTextureCache`.
 /// If the texture is already cached, immediately invokes the callback with the texture. If the mod is not loaded, returns an error.
