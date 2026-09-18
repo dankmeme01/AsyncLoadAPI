@@ -1,5 +1,4 @@
-#include <AsyncLoad/BufferCache.hpp>
-#include <AsyncLoad/Util.hpp>
+#include <AsyncLoad/util/BufferCache.hpp>
 #include <arc/prelude.hpp>
 #include <bit>
 

@@ -8,7 +8,7 @@
 #include <Geode/Result.hpp>
 #include <cocos2d.h>
 #include <asp/iter.hpp>
-#include "Util.hpp"
+#include "util/config.hpp"
 
 namespace AsyncLoad {
 

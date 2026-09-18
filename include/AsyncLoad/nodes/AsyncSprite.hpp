@@ -2,13 +2,15 @@
 
 #include <Geode/Geode.hpp>
 #include <AsyncLoad/Manager.hpp>
-#include "../Util.hpp"
+#include "../util/config.hpp"
 
 namespace AsyncLoad {
 
 class AL_DLL AsyncSprite : public cocos2d::CCSprite {
 public:
     using Callback = geode::Function<void(geode::Result<>)>;
+
+    ~AsyncSprite();
 
     static AsyncSprite* create();
     static AsyncSprite* create(geode::ZStringView filename, cocos2d::CCRect = {});

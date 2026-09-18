@@ -2,359 +2,18 @@
 #include <AsyncLoad/FileUtils.hpp>
 #include <asp/thread/ThreadPool.hpp>
 #include <Geode/utils/StringMap.hpp>
-#include "ManagerTask.hpp"
+#include "ManagerImpl.hpp"
+#include "tasks/ImageTask.hpp"
+#include "tasks/TextureTask.hpp"
+#include "tasks/SpriteFramesTask.hpp"
+#include "tasks/ReadyTask.hpp"
 
 using namespace geode::prelude;
 
 namespace AsyncLoad {
 
-// Task handle
-
-TaskHandle::TaskHandle(uint64_t id) : m_id(id) {}
-
-TaskHandle::~TaskHandle() {
-    this->cancel();
-}
-
-TaskHandle::TaskHandle(TaskHandle&& other) noexcept{
-    m_id = std::exchange(other.m_id, 0);
-}
-
-TaskHandle& TaskHandle::operator=(TaskHandle&& other) noexcept {
-    if (this != &other) {
-        m_id = std::exchange(other.m_id, 0);
-    }
-    return *this;
-}
-
-void TaskHandle::leak() {
-    m_id = 0;
-}
-
-void TaskHandle::cancel() {
-    if (m_id != 0) {
-        ALManager::get().cancelTask(m_id);
-    }
-}
-
-MultiTaskHandle::~MultiTaskHandle() {
-    this->cancel();
-}
-
-void MultiTaskHandle::leak() {
-    for (auto& task : m_tasks) {
-        task.leak();
-    }
-    m_tasks.clear();
-}
-
-void MultiTaskHandle::cancel() {
-    for (auto& task : m_tasks) {
-        task.cancel();
-    }
-    m_tasks.clear();
-}
-
-void MultiTaskHandle::addTask(TaskHandle handle) {
-    if (handle.id() != 0) {
-        m_tasks.push_back(std::move(handle));
-    }
-}
-
-// ALManager task
-
-
 // ALManager
 
-
-struct ALManager::Impl : CCObject {
-    enum class PendingSpritesheetState {
-        None,
-        OneLoaded,
-        Finished,
-        Errored,
-    };
-    struct PendingSpritesheet {
-        Ref<CCTexture2D> texture;
-        std::optional<SpriteFrameData> spriteFrames;
-        Function<void(Result<>)> callback;
-        PendingSpritesheetState state = PendingSpritesheetState::None;
-        bool callbackInvoked = false;
-    };
-
-    std::vector<asp::Thread<>> m_threads;
-    asp::Mutex<std::unordered_map<uint64_t, std::shared_ptr<Task>>> m_activeTasks;
-    asp::Channel<std::shared_ptr<Task>> m_taskQueue;
-    asp::Channel<std::shared_ptr<Task>> m_MTtaskQueue;
-    std::vector<SmartPBO> m_pbos;
-    utils::StringMap<PendingSpritesheet> m_spriteSheets;
-
-    Impl() {
-        // spawn more threads than available, because some threads may be blocked on IO operations n stuff
-        auto nthreads = std::thread::hardware_concurrency() + 4;
-
-        for (size_t i = 0; i < nthreads; ++i) {
-            m_threads.emplace_back(asp::Thread<> {[this](auto& st) {
-                this->threadFunc();
-            }});
-
-            auto& t = m_threads.back();
-            t.setName("AsyncLoad worker thread");
-            t.start();
-        }
-    }
-
-    ~Impl() {
-        for (auto& thread : m_threads) {
-            thread.stop();
-        }
-        for (auto& thread : m_threads) {
-            thread.join();
-        }
-    }
-
-    void threadFunc() {
-        auto opt = m_taskQueue.popTimeout(asp::Duration::fromMillis(500));
-        if (!opt) return;
-
-        auto task = std::move(*opt);
-        TaskAdvanceResult result;
-
-        do {
-            result = task->advance(false);
-        } while (result == TaskAdvanceResult::Pending);
-
-        // task has now either finished or requires to be advanced on main thread, so enqueue it
-        m_MTtaskQueue.push(std::move(task));
-    }
-
-    void submitTask(std::shared_ptr<Task> task) {
-        AL_TRACE("Submitting task {} with goal {}", task->m_id, task->m_goal.load());
-
-        auto active = m_activeTasks.lock();
-        active->emplace(task->m_id, task);
-        active.unlock();
-
-        m_taskQueue.push(std::move(task));
-    }
-
-    void cancelTask(uint64_t id) {
-        auto active = m_activeTasks.lock();
-        auto it = active->find(id);
-        if (it != active->end()) {
-            // cancel the task and immediately remove from the map, as soon as the current operation finishes,
-            // the task should be queued to the main thread and discarded.
-            it->second->cancel();
-            active->erase(it);
-        }
-    }
-
-    void update(float dt) {
-        auto start = asp::Instant::now();
-
-        while (auto value = m_MTtaskQueue.tryPop()) {
-            auto task = std::move(*value);
-
-            bool finished = task->finished();
-            bool needsMainThread = true;
-
-            while (!finished && needsMainThread) {
-                auto result = task->advance(true);
-                switch (result) {
-                    case TaskAdvanceResult::Pending: {
-                        // should be ran again on a worker thread
-                        needsMainThread = false;
-                    } break;
-                    case TaskAdvanceResult::RequiresMainThread: {
-                        // should be ran again here
-                    } break;
-                    case TaskAdvanceResult::Finished: {
-                        // finished!
-                        finished = true;
-                    } break;
-                }
-            }
-
-            if (finished) {
-                // task finished, remove the task and run the callback if it wasn't cancelled
-                AL_TRACE("Task {} finished after {}, state: {}", task->m_id, task->elapsed(), task->state());
-                if (!task->cancelled()) {
-                    task->invokeCallback();
-                    auto active = m_activeTasks.lock();
-                    active->erase(task->m_id);
-                } else {
-                    task->invokeCancelled();
-                }
-            } else {
-                // task needs to continue running but does not require the main thread, so push it back to the worker threads
-                m_taskQueue.push(std::move(task));
-            }
-
-            // avoid blocking for too long at once, even if a ton of tasks are queued
-            // we want to try and avoid huge lag spikes
-            if (start.elapsed().millis() > 10) {
-                break;
-            }
-        }
-
-        auto taken = start.elapsed();
-        if (taken.millis() > 20) {
-            log::warn("ALManager::update took {}", taken);
-        } else if (taken.millis() > 2) {
-            AL_TRACE("ALManager::update took {}", taken);
-        }
-    }
-
-    void setCancelCallback(uint64_t id, Function<void()> callback) {
-        auto active = m_activeTasks.lock();
-        auto it = active->find(id);
-        if (it != active->end()) {
-            it->second->m_onCancellation = std::move(callback);
-        }
-    }
-
-    MultiTaskHandle loadSpritesheet(std::string name, Function<void(Result<>)> callback) {
-        auto pngPath = fmt::format("{}.png", name);
-        auto plistPath = fmt::format("{}.plist", name);
-
-        // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
-        // without running fullPathForFilename. we will replicate this and also use it as a unique key.
-        auto plistKey = gd::string{plistPath};
-
-        auto sfc = CCSpriteFrameCache::get();
-        if (sfc->m_pLoadedFileNames->contains(plistKey)) {
-            // already loaded!
-            callback(Ok());
-            return {};
-        }
-
-        auto [_, inserted] = m_spriteSheets.emplace(std::string{plistKey}, PendingSpritesheet{
-            .texture = nullptr,
-            .spriteFrames = std::nullopt,
-            .callback = std::move(callback),
-        });
-        if (!inserted) {
-            // already loading!
-            // TODO: we don't want this to return {} because it can be taken as an error,
-            // instead we want some way to return a task handle attached to the currently running task
-            log::warn("ALManager: loadSpritesheet called for {} while it is already loading!", name);
-            return {};
-        }
-
-        MultiTaskHandle handle;
-
-        // Load the texture first, since this step may succeed immediately if cached
-        auto& am = ALManager::get();
-        auto textureTask = am.loadTexture(pngPath, [this, name = std::string{plistKey}](Result<Ref<CCTexture2D>> result) {
-            this->pendingSpritesheetAdvanceTexture(name, std::move(result));
-        });
-        this->setCancelCallback(textureTask.id(), [this, name = std::string{plistKey}]() {
-            this->pendingSpritesheetCancel(name);
-        });
-        handle.addTask(std::move(textureTask));
-
-        // and then start loading the plist in background
-        auto framesTask = am.submitSpriteFramesLoad({
-            .path = plistPath,
-            .isFullPath = false,
-            .callback = [this, name = std::string{plistKey}](Result<SpriteFrameData> result) {
-                this->pendingSpritesheetAdvancePlist(name, std::move(result));
-            },
-        });
-        this->setCancelCallback(framesTask.id(), [this, name = std::string{plistKey}]() {
-            this->pendingSpritesheetCancel(name);
-        });
-        handle.addTask(std::move(framesTask));
-
-        return handle;
-    }
-
-    void pendingSpritesheetAdvanceTexture(std::string_view name, Result<Ref<CCTexture2D>> result) {
-        auto ps = m_spriteSheets.find(name);
-        AL_ASSERT(ps != m_spriteSheets.end());
-        auto& pending = ps->second;
-
-        if (result) {
-            pending.texture = std::move(*result);
-            this->pendingSpritesheetAdvance(pending, name);
-        } else {
-            this->pendingSpritesheetError(pending, ps, fmt::format("Texture load failed: {}", result.unwrapErr()));
-        }
-    }
-
-    void pendingSpritesheetAdvancePlist(std::string_view name, Result<SpriteFrameData> result) {
-        auto ps = m_spriteSheets.find(name);
-        AL_ASSERT(ps != m_spriteSheets.end());
-        auto& pending = ps->second;
-
-        if (result) {
-            pending.spriteFrames = std::move(*result);
-            this->pendingSpritesheetAdvance(pending, name);
-        } else {
-            this->pendingSpritesheetError(pending, ps, fmt::format("Plist load failed: {}", result.unwrapErr()));
-        }
-    }
-
-    void pendingSpritesheetError(PendingSpritesheet& sheet, auto it, std::string_view error) {
-        bool first = sheet.state == PendingSpritesheetState::None;
-
-        sheet.state = PendingSpritesheetState::Errored;
-        if (sheet.callback && !sheet.callbackInvoked) {
-            sheet.callback(Err(fmt::format("Failed to load spritesheet: {}", error)));
-            sheet.callbackInvoked = true;
-        }
-
-        // if we are NOT the first subtask of the two, then remove from the map since no one else could remove it afterwards
-        if (!first) {
-            m_spriteSheets.erase(it);
-        }
-    }
-
-    void pendingSpritesheetAdvance(PendingSpritesheet& sheet, std::string_view name) {
-        bool isSecond = false;
-
-        switch (sheet.state) {
-            case PendingSpritesheetState::Errored: {
-                isSecond = true;
-            } break;
-
-            case PendingSpritesheetState::Finished:
-                AL_ASSERT(false && "unreachable condition");
-
-            case PendingSpritesheetState::None: {
-                sheet.state = PendingSpritesheetState::OneLoaded;
-            } break;
-
-            case PendingSpritesheetState::OneLoaded: {
-                // everything loaded now!
-                isSecond = true;
-                AL_ASSERT(sheet.texture && sheet.spriteFrames);
-
-                auto& sf = *sheet.spriteFrames;
-                addSpriteFrames(sf, sheet.texture, name);
-
-                sheet.state = PendingSpritesheetState::Finished;
-                if (sheet.callback) {
-                    sheet.callback(Ok());
-                }
-                sheet.callbackInvoked = true;
-            } break;
-        }
-
-        // if we are the last subtask to finish, also remove entry from the map
-        if (isSecond) {
-            m_spriteSheets.erase(name);
-        }
-    }
-
-    void pendingSpritesheetCancel(std::string_view name) {
-        auto it = m_spriteSheets.find(name);
-        if (it != m_spriteSheets.end()) {
-            auto& pending = it->second;
-            pendingSpritesheetError(pending, it, "load cancelled");
-        }
-    }
-};
 
 ALManager::~ALManager() {}
 
@@ -368,24 +27,30 @@ ALManager& ALManager::get() {
 }
 
 TaskHandle ALManager::submitImageLoad(ImageLoadParams&& params) {
-    auto task = std::make_shared<ImageTask>(std::move(params));
+    auto control = std::make_shared<ImageTask::Control>(std::move(params.callback));
+    auto task = std::make_shared<ImageTask>(std::move(params), control);
+
     m_impl->submitTask(task);
-    return task->handle();
+    return TaskHandle{control};
 }
 
 TaskHandle ALManager::submitTextureLoad(TextureLoadParams&& params) {
-    auto task = std::make_shared<TextureTask>(std::move(params));
+    auto control = std::make_shared<TextureTask::Control>(std::move(params.callback));
+    auto task = std::make_shared<TextureTask>(std::move(params), control);
+
     m_impl->submitTask(task);
-    return task->handle();
+    return TaskHandle{control};
 }
 
 TaskHandle ALManager::submitSpriteFramesLoad(SpriteFramesLoadParams&& params) {
-    auto task = std::make_shared<SpriteFramesTask>(std::move(params));
+    auto control = std::make_shared<SpriteFramesTask::Control>(std::move(params.callback));
+    auto task = std::make_shared<SpriteFramesTask>(std::move(params), control);
+
     m_impl->submitTask(task);
-    return task->handle();
+    return TaskHandle{control};
 }
 
-TaskHandle ALManager::loadTexture(ZStringView path, TextureLoadParams::Callback callback, bool fullPath) {
+TaskHandle ALManager::loadTextureInner(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath, bool eager) {
     auto tc = CCTextureCache::get();
 
     gd::string fp{path.data(), path.size()};
@@ -396,8 +61,19 @@ TaskHandle ALManager::loadTexture(ZStringView path, TextureLoadParams::Callback 
     auto cachedTex = static_cast<CCTexture2D*>(tc->m_pTextures->objectForKey(fp));
     if (cachedTex) {
         AL_TRACE("loadTexture: cache hit for {}", fp);
-        callback(Ok(cachedTex));
-        return {};
+
+        if (eager) {
+            callback(Ok(cachedTex));
+            return {};
+        } else {
+            using RTask = ReadyTask<Ref<CCTexture2D>>;
+            // create a dummy task that is already complete
+            auto control = std::make_shared<RTask::Control>(std::move(callback));
+            auto task = std::make_shared<RTask>(Ok(cachedTex), control);
+
+            m_impl->submitTask(task, true);
+            return TaskHandle{control};
+        }
     }
 
     return this->submitTextureLoad(TextureLoadParams{
@@ -413,12 +89,100 @@ TaskHandle ALManager::loadTexture(ZStringView path, TextureLoadParams::Callback 
     });
 }
 
-MultiTaskHandle ALManager::loadSpritesheet(std::string_view name, Function<void(Result<>)> callback) {
-    return m_impl->loadSpritesheet(std::string{name}, std::move(callback));
+TaskHandle ALManager::loadTexture(ZStringView path, TextureLoadParams::Callback callback, bool fullPath) {
+    return loadTextureInner(path, std::move(callback), fullPath, false);
 }
 
-void ALManager::cancelTask(uint64_t id) {
-    m_impl->cancelTask(id);
+TaskHandle ALManager::loadTextureEager(ZStringView path, TextureLoadParams::Callback callback, bool fullPath) {
+    return loadTextureInner(path, std::move(callback), fullPath, true);
+}
+
+struct PendingSpritesheetState {
+    Ref<CCTexture2D> texture;
+    std::optional<SpriteFrameData> spriteFrames;
+    Function<void(Result<>)> callback;
+    std::string name;
+};
+
+TaskGroup ALManager::loadSpritesheet(std::string_view name, Function<void(Result<>)> callback) {
+    TaskGroup group;
+    group.setFailBehavior(TaskGroupFailBehavior::Cancel);
+
+    auto pngPath = fmt::format("{}.png", name);
+    auto plistPath = fmt::format("{}.plist", name);
+
+    // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
+    // without running fullPathForFilename. we will replicate this and also use it as a unique key.
+    auto plistKey = gd::string{plistPath};
+    auto sfc = CCSpriteFrameCache::get();
+    if (sfc->m_pLoadedFileNames->contains(plistKey)) {
+        // already loaded!
+        group.close([cb = std::move(callback)](TaskGroupResult results) mutable {
+            if (cb) cb(Ok());
+        });
+        return group;
+    }
+
+    auto pstate = std::make_shared<PendingSpritesheetState>();
+    pstate->callback = std::move(callback);
+    pstate->name = std::string{plistKey};
+
+    // Load the texture first, since this step may succeed immediately if cached
+    auto textureTask = this->loadTextureEager(pngPath, [this, pstate](Result<Ref<CCTexture2D>> result) {
+        if (result) {
+            pstate->texture = std::move(*result);
+        } else {
+            log::warn("ALManager: loadSpritesheet texture load failed for {}: {}", pstate->name, result.unwrapErr());
+        }
+    });
+    if (textureTask) {
+        group.add(std::move(textureTask));
+    }
+
+    // and then start loading the plist in background
+    auto framesTask = this->submitSpriteFramesLoad({
+        .path = plistPath,
+        .isFullPath = false,
+        .callback = [this, pstate](Result<SpriteFrameData> result) {
+            if (result) {
+                pstate->spriteFrames = std::move(*result);
+            } else {
+                log::warn("ALManager: loadSpritesheet plist load failed for {}: {}", pstate->name, result.unwrapErr());
+            }
+        },
+    });
+    group.add(std::move(framesTask));
+    group.close([pstate](TaskGroupResult results) mutable {
+        if (results.status == GroupStatus::Completed) {
+            if (!pstate->texture || !pstate->spriteFrames) {
+                // likely one of the subtasks got cancelled
+                log::warn("ALManager: loadSpritesheet completed but one of the subtasks did not complete through. Subtask results:");
+                for (auto& r : results.results) {
+                    log::warn("ALManager: - subtask {}: {} (cancelled: {})", r.handle.name(), r.result, r.cancelled);
+                }
+
+                if (pstate->callback) pstate->callback(Err("one or more subtasks failed or was cancelled, see logs"));
+                return;
+            }
+
+            auto& sf = *pstate->spriteFrames;
+            addSpriteFrames(sf, pstate->texture, pstate->name);
+
+            if (pstate->callback) pstate->callback(Ok());
+        } else {
+            std::string err = "unknown error";
+            for (auto& r : results.results) {
+                if (r.result && r.result->isErr()) {
+                    err = r.result->unwrapErr();
+                    break;
+                }
+            }
+
+            if (pstate->callback) pstate->callback(Err("failed to load spritesheet: {}", err));
+        }
+    });
+
+    return group;
 }
 
 SmartPBO ALManager::requestPBO(size_t capacity) {
@@ -468,18 +232,6 @@ void ALManager::returnPBO(SmartPBO pbo) {
 #endif
 }
 
-void ALManager::_freePBOs() {
-    m_impl->m_pbos.clear();
-}
-
-void ALManager::_cancelAll() {
-    auto active = m_impl->m_activeTasks.lock();
-    for (auto& [id, task] : *active) {
-        task->cancel();
-    }
-    active->clear();
-}
-
 void ALManager::lendMainThread() {
     m_impl->update(0.f);
 }
@@ -487,7 +239,7 @@ void ALManager::lendMainThread() {
 }
 
 $on_game(TexturesUnloaded) {
-    auto& m = AsyncLoad::ALManager::get();
-    m._freePBOs();
-    m._cancelAll();
+    auto& m = AsyncLoad::ALManager::Impl::get();
+    m.freePBOs();
+    m.cancelAll();
 }

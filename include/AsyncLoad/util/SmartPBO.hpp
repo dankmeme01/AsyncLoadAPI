@@ -1,6 +1,6 @@
 #pragma once
-#include "Util.hpp"
-#include "OpenGLIncludes.hpp"
+#include "config.hpp"
+#include "../OpenGLIncludes.hpp"
 
 namespace AsyncLoad {
 

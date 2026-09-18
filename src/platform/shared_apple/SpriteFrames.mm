@@ -52,36 +52,36 @@ bool parseSpriteFrameV0(NSDictionary* dict, SpriteFrame& sframe) {
         uint32_t keyHash = hashStringRuntime(to_view(key));
 
         switch (keyHash) {
-            case STRING_HASH("x"): {
+            case AL_STRING_HASH("x"): {
                 assign_or_bail(sframe.textureRect.origin.x, parseNode<float>(valueNode));
             } break;
 
-            case STRING_HASH("y"): {
+            case AL_STRING_HASH("y"): {
                 assign_or_bail(sframe.textureRect.origin.y, parseNode<float>(valueNode));
             } break;
 
-            case STRING_HASH("width"): {
+            case AL_STRING_HASH("width"): {
                 assign_or_bail(sframe.textureRect.size.width, parseNode<float>(valueNode));
             } break;
 
-            case STRING_HASH("height"): {
+            case AL_STRING_HASH("height"): {
                 assign_or_bail(sframe.textureRect.size.height, parseNode<float>(valueNode));
             } break;
 
-            case STRING_HASH("offsetX"): {
+            case AL_STRING_HASH("offsetX"): {
                 assign_or_bail(sframe.offset.x, parseNode<float>(valueNode));
             } break;
 
-            case STRING_HASH("offsetY"): {
+            case AL_STRING_HASH("offsetY"): {
                 assign_or_bail(sframe.offset.y, parseNode<float>(valueNode));
             } break;
 
-            case STRING_HASH("originalWidth"): {
+            case AL_STRING_HASH("originalWidth"): {
                 assign_or_bail(sframe.sourceSize.width, (parseNode<int>(valueNode)));
                 sframe.sourceSize.width = std::abs(sframe.sourceSize.width);
             } break;
 
-            case STRING_HASH("originalHeight"): {
+            case AL_STRING_HASH("originalHeight"): {
                 assign_or_bail(sframe.sourceSize.height, (parseNode<int>(valueNode)));
                 sframe.sourceSize.height = std::abs(sframe.sourceSize.height);
             } break;
@@ -101,21 +101,21 @@ bool parseSpriteFrameV1_2(NSDictionary* dict, SpriteFrame& sframe, int format) {
         uint32_t keyHash = hashStringRuntime(to_view(key));
 
         switch (keyHash) {
-            case STRING_HASH("frame"): {
+            case AL_STRING_HASH("frame"): {
                 assign_or_bail(sframe.textureRect, parseNode<cocos2d::CCRect>(valueNode));
             } break;
 
-            case STRING_HASH("rotated"): {
+            case AL_STRING_HASH("rotated"): {
                 if (format == 2) {
                     assign_or_bail(sframe.textureRotated, parseNode<bool>(valueNode));
                 }
             } break;
 
-            case STRING_HASH("offset"): {
+            case AL_STRING_HASH("offset"): {
                 assign_or_bail(sframe.offset, parseNode<cocos2d::CCPoint>(valueNode));
             } break;
 
-            case STRING_HASH("sourceSize"): {
+            case AL_STRING_HASH("sourceSize"): {
                 assign_or_bail(sframe.sourceSize, parseNode<cocos2d::CCSize>(valueNode));
             } break;
 
@@ -134,19 +134,19 @@ bool parseSpriteFrameV3(NSDictionary* dict, SpriteFrame& sframe) {
         uint32_t keyHash = hashStringRuntime(to_view(key));
 
         switch (keyHash) {
-            case STRING_HASH("spriteOffset"): {
+            case AL_STRING_HASH("spriteOffset"): {
                 assign_or_bail(sframe.offset, parseNode<cocos2d::CCPoint>(valueNode));
             } break;
 
-            case STRING_HASH("spriteSize"): {
+            case AL_STRING_HASH("spriteSize"): {
                 assign_or_bail(sframe.textureRect.size, parseNode<cocos2d::CCSize>(valueNode));
             } break;
 
-            case STRING_HASH("spriteSourceSize"): {
+            case AL_STRING_HASH("spriteSourceSize"): {
                 assign_or_bail(sframe.sourceSize, parseNode<cocos2d::CCSize>(valueNode));
             } break;
 
-            case STRING_HASH("textureRect"): {
+            case AL_STRING_HASH("textureRect"): {
                 if (auto tr = parseNode<cocos2d::CCRect>(valueNode)) {
                     sframe.textureRect.origin = tr->origin;
                 } else {
@@ -154,11 +154,11 @@ bool parseSpriteFrameV3(NSDictionary* dict, SpriteFrame& sframe) {
                 }
             } break;
 
-            case STRING_HASH("textureRotated"): {
+            case AL_STRING_HASH("textureRotated"): {
                 assign_or_bail(sframe.textureRotated, parseNode<bool>(valueNode));
             } break;
 
-            case STRING_HASH("aliases"): {
+            case AL_STRING_HASH("aliases"): {
                 // It seems like aliases are never used by GD, so I cannot test this code, but in theory it should work..
                 if ([valueNode isKindOfClass:[NSArray class]]) {
                     for (NSString* alias in (NSArray*)valueNode) {

@@ -21,3 +21,10 @@
 #else
 # define AL_RESTRICT __restrict
 #endif
+
+
+#ifdef AL_DEBUG
+# define AL_TRACE(...) log::debug(__VA_ARGS__)
+#else
+# define AL_TRACE(...) do {} while (0)
+#endif

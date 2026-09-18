@@ -10,12 +10,12 @@ Result<> loadTexture(
     TextureLoadParams::Callback callback,
     bool fullPath
 ) {
-    ALManager::get().loadTexture(path, std::move(callback), fullPath).leak();
+    ALManager::get().loadTexture(path, std::move(callback), fullPath);
     return Ok();
 }
 
 Result<> preload(ZStringView path) {
-    ALManager::get().loadTexture(path, [](auto) {}).leak();
+    ALManager::get().loadTexture(path, [](auto) {});
     return Ok();
 }
 

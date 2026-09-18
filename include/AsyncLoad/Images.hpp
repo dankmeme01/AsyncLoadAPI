@@ -1,7 +1,7 @@
 #pragma once
 #include <stddef.h>
-#include <AsyncLoad/BufferCache.hpp>
-#include "config.hpp"
+#include "util/BufferCache.hpp"
+#include "util/config.hpp"
 
 namespace AsyncLoad {
 

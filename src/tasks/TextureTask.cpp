@@ -1,11 +1,15 @@
-#include "ManagerTask.hpp"
-#include "OpenGL.hpp"
-#include <AsyncLoad/Manager.hpp>
-#include <Geode/utils/terminate.hpp>
-#include <Geode/modify/CCTexture2D.hpp>
-#include <AsyncLoad/assert.hpp>
+#include "TextureTask.hpp"
 #include <AsyncLoad/FileUtils.hpp>
-#include <prevter.imageplus/include/events.hpp>
+#include <Geode/utils/terminate.hpp>
+#include <OpenGL.hpp>
+
+using namespace geode::prelude;
+
+#ifdef GEODE_IS_WINDOWS
+static constexpr bool USE_MAPPING = true;
+#else
+static constexpr bool USE_MAPPING = false;
+#endif
 
 #ifdef AL_DEBUG
 # define AL_BENCHMARK(code) \
@@ -22,51 +26,6 @@
     } while (0)
 #endif
 
-#ifdef GEODE_IS_WINDOWS
-static constexpr bool USE_MAPPING = true;
-#else
-static constexpr bool USE_MAPPING = false;
-#endif
-
-using namespace geode::prelude;
-
-namespace AsyncLoad {
-
-std::string_view format_as(TaskState state) {
-    switch (state) {
-        case TaskState::PreImageRead: return "PreImageRead";
-        case TaskState::ImageRead: return "ImageRead";
-        case TaskState::ImageReady: return "ImageReady";
-        case TaskState::AsyncPboReady: return "AsyncPboReady";
-        case TaskState::AsyncPboDone: return "AsyncPboDone";
-        case TaskState::TextureReady: return "TextureReady";
-        case TaskState::PrePlistRead: return "PrePlistRead";
-        case TaskState::PlistRead: return "PlistRead";
-        case TaskState::SpriteFramesReady: return "SpriteFramesReady";
-        case TaskState::Failed: return "Failed";
-        case TaskState::Invalid: return "Invalid";
-    }
-    std::unreachable();
-}
-
-std::string_view format_as(TaskGoal goal) {
-    switch (goal) {
-        case TaskGoal::Image: return "Image";
-        case TaskGoal::Texture: return "Texture";
-        case TaskGoal::SpriteFrames: return "SpriteFrames";
-    }
-    std::unreachable();
-}
-
-static void preparePath(auto& buf, std::string_view path, bool isFullPath) {
-    if (isFullPath) {
-        buf.append(path);
-    } else {
-        auto fp = fullPathForFilename(path);
-        buf.append(fp);
-    }
-}
-
 static bool shouldUsePBO() {
     static bool should = g_opengl.supportsPBO && Mod::get()->getSettingValue<bool>("use-pbos");
     return should;
@@ -77,87 +36,16 @@ static bool shouldUseAsyncPBO() {
     return should;
 }
 
-ImageTask::ImageTask(ImageLoadParams&& params) : Task() {
-    m_goal.store(TaskGoal::Image, std::memory_order::relaxed);
-    m_callback = std::move(params.callback);
-
-    if (!params.data.empty()) {
-        // user provided raw image data, no need to read any files
-        m_state.store(TaskState::ImageRead, std::memory_order::relaxed);
-        m_imageData = std::move(params.data);
-        return;
-    }
-
-    // user provided a path, prepare to read from it
-    m_state.store(TaskState::PreImageRead, std::memory_order::relaxed);
-    m_path = asp::BoxedString{params.path};
-    m_pathIsFull = params.isFullPath;
-}
-
-bool ImageTask::finished() const {
-    auto st = this->state();
-    return st == TaskState::ImageReady || st == TaskState::Failed || this->cancelled();
-}
-
-void ImageTask::invokeCallback() {
-    AL_DEBUG_ASSERT(this->finished());
-
-    if (this->failed()) {
-        if (m_callback) m_callback(Err(std::move(m_error)));
-    } else {
-        AL_DEBUG_ASSERT(m_image.has_value());
-        if (m_callback) m_callback(Ok(std::move(*m_image)));
-    }
-}
-
-TaskAdvanceResult ImageTask::advance(bool mainThread) {
-    if (this->finished()) return TaskAdvanceResult::Finished;
-    using enum TaskState;
-
-    switch (this->state()) {
-        case PreImageRead: {
-            auto res = getFileData(m_path.c_str(), m_pathIsFull);
-            if (!res) {
-                this->fail(fmt::format("failed to read image file: {}", res.unwrapErr()));
-                return TaskAdvanceResult::Finished;
-            }
-            m_imageData = std::move(*res);
-            this->setState(ImageRead);
-        } break;
-
-        case ImageRead: {
-            auto res = RawImage::create(m_imageData.span());
-            m_imageData = {};
-            if (!res) {
-                this->fail(fmt::format("failed to decode image: {}", res.unwrapErr()));
-                return TaskAdvanceResult::Finished;
-            }
-            m_image = std::move(*res);
-            m_image->premultiply();
-            this->setState(ImageReady);
-            return TaskAdvanceResult::Finished;
-        } break;
-
-        default: {
-            AL_ASSERT(false && "Invalid state for ImageTask");
-        } break;
-    }
-
-    return TaskAdvanceResult::Pending;
-}
-
-TextureTask::TextureTask(TextureLoadParams&& params) : Task() {
-    m_goal.store(TaskGoal::Texture, std::memory_order::relaxed);
-    m_callback = std::move(params.callback);
-
+namespace AsyncLoad {
+TextureTask::TextureTask(TextureLoadParams&& params, std::shared_ptr<Control> ctl) : TypedTask(std::move(ctl)) {
     if (params.rawImage) {
         // user provided a raw image, no need to read any files
-        m_state.store(TaskState::ImageReady, std::memory_order::relaxed);
+        m_state = State::ImageReady;
         m_image = std::move(params.rawImage);
         return;
     } else if (params.image) {
         // user provided a CCImage, same deal
-        m_state.store(TaskState::ImageReady, std::memory_order::relaxed);
+        m_state = State::ImageReady;
 
         uint64_t w = params.image->m_nWidth;
         uint64_t h = params.image->m_nHeight;
@@ -175,7 +63,7 @@ TextureTask::TextureTask(TextureLoadParams&& params) : Task() {
     }
 
     // user provided a path, prepare to read from it
-    m_state.store(TaskState::PreImageRead, std::memory_order::relaxed);
+    m_state = State::PreImageRead;
     m_path = asp::BoxedString{params.path};
     m_pathIsFull = params.isFullPath;
 }
@@ -190,28 +78,12 @@ TextureTask::~TextureTask() {
     }
 }
 
-bool TextureTask::finished() const {
-    auto st = this->state();
-    return st == TaskState::TextureReady || st == TaskState::Failed || this->cancelled();
-}
-
-void TextureTask::invokeCallback() {
-    AL_DEBUG_ASSERT(this->finished());
-
-    if (this->failed()) {
-        if (m_callback) m_callback(Err(std::move(m_error)));
-    } else {
-        AL_DEBUG_ASSERT(m_texture != nullptr);
-        if (m_callback) m_callback(Ok(std::move(m_texture)));
-    }
-}
 
 TaskAdvanceResult TextureTask::advance(bool mainThread) {
-    if (this->finished()) return TaskAdvanceResult::Finished;
-    using enum TaskState;
+    if (!this->shouldRun()) return TaskAdvanceResult::Finished;
 
-    switch (this->state()) {
-        case PreImageRead: {
+    switch (m_state) {
+        case State::PreImageRead: {
             auto in = asp::Instant::now();
 
             if constexpr (USE_MAPPING) {
@@ -231,10 +103,10 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
             }
 
             AL_TRACE("Image read finished in {}", in.elapsed());
-            this->setState(ImageRead);
+            m_state = State::ImageRead;
         } break;
 
-        case ImageRead: {
+        case State::ImageRead: {
             std::span<const uint8_t> data;
             if (std::holds_alternative<CachedBufferChunk>(m_imageData)) {
                 data = std::get<CachedBufferChunk>(m_imageData).span();
@@ -250,11 +122,11 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
             m_imageData = CachedBufferChunk{}; // release buffer
             m_image = std::move(*res);
             m_image->premultiply();
-            this->setState(ImageReady);
+            m_state = State::ImageReady;
             return TaskAdvanceResult::RequiresMainThread;
         } break;
 
-        case ImageReady: {
+        case State::ImageReady: {
             if (!mainThread) return TaskAdvanceResult::RequiresMainThread;
 
             g_opengl.initialize();
@@ -268,11 +140,11 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
             }
         } break;
 
-        case AsyncPboReady: {
+        case State::AsyncPboReady: {
             return this->doWriteIntoAsyncPBO();
         } break;
 
-        case AsyncPboDone: {
+        case State::AsyncPboDone: {
             return this->doFinalizeAsyncPBO();
         } break;
 
@@ -283,6 +155,7 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
 
     return TaskAdvanceResult::Pending;
 }
+
 
 Ref<CCTexture2D> TextureTask::finalizeTexture(GLuint num) {
     auto tex = Ref<CCTexture2D>::adopt(new CCTexture2D());
@@ -339,7 +212,7 @@ void TextureTask::preparePBO() {
     }
 
     m_glPbo = ALManager::get().requestPBO(byteSize);
-    AL_TRACE("allocated PBO {} with capacity {} for task {}", m_glPbo.get(), m_glPbo.capacity(), m_id);
+    AL_TRACE("allocated PBO {} with capacity {} for {}", m_glPbo.get(), m_glPbo.capacity(), this->name());
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo.get());
 }
 
@@ -360,7 +233,7 @@ TaskAdvanceResult TextureTask::startAsyncPBOLoad() {
         );
     }
 
-    this->setState(TaskState::AsyncPboReady);
+    m_state = State::AsyncPboReady;
     return TaskAdvanceResult::Pending;
 }
 
@@ -370,7 +243,7 @@ TaskAdvanceResult TextureTask::doWriteIntoAsyncPBO() {
     auto size = m_image->sizeBytes();
     std::memcpy(m_mappedPboPtr, m_image->data.data(), size);
 
-    this->setState(TaskState::AsyncPboDone);
+    m_state = State::AsyncPboDone;
     return TaskAdvanceResult::RequiresMainThread;
 }
 
@@ -394,10 +267,10 @@ TaskAdvanceResult TextureTask::doFinalizeAsyncPBO() {
     // return the pbo
     ALManager::get().returnPBO(std::move(m_glPbo));
 
-    m_texture = this->finalizeTexture(m_glTex);
+    auto texture = this->finalizeTexture(m_glTex);
     m_glTex = 0;
 
-    this->setState(TaskState::TextureReady);
+    this->succeed(std::move(texture));
     return TaskAdvanceResult::Finished;
 }
 
@@ -414,13 +287,13 @@ TaskAdvanceResult TextureTask::startPBOLoad() {
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    m_texture = this->finalizeTexture(m_glTex);
+    auto texture = this->finalizeTexture(m_glTex);
     m_glTex = 0;
 
     // return the PBO to the manager so it can be reused later
     ALManager::get().returnPBO(std::move(m_glPbo));
 
-    this->setState(TaskState::TextureReady);
+    this->succeed(std::move(texture));
     return TaskAdvanceResult::Finished;
 }
 
@@ -449,78 +322,21 @@ TaskAdvanceResult TextureTask::startNoPBOLoad() {
         m_image->data.data()
     ));
 
-    m_texture = this->finalizeTexture(num);
-    this->setState(TaskState::TextureReady);
+    this->succeed(this->finalizeTexture(num));
 
     return TaskAdvanceResult::Finished;
 }
+void TextureTask::succeed(Ref<CCTexture2D> texture) {
+    AL_ASSERT(texture != nullptr);
 
-// Sprite frames task
-
-SpriteFramesTask::SpriteFramesTask(SpriteFramesLoadParams&& params) : Task() {
-    m_goal.store(TaskGoal::SpriteFrames, std::memory_order::relaxed);
-    m_callback = std::move(params.callback);
-
-    if (!params.data.empty()) {
-        // user provided raw plist data, no need to read any files
-        m_state.store(TaskState::PlistRead, std::memory_order::relaxed);
-        m_data = std::move(params.data);
-        return;
-    }
-
-    // user provided a path, prepare to read from it
-    m_state.store(TaskState::PrePlistRead, std::memory_order::relaxed);
-    m_path = asp::BoxedString{params.path};
-    m_pathIsFull = params.isFullPath;
+    m_state = State::TextureReady;
+    this->complete(Ok(std::move(texture)));
 }
 
-bool SpriteFramesTask::finished() const {
-    auto st = this->state();
-    return st == TaskState::SpriteFramesReady || st == TaskState::Failed || this->cancelled();
+void TextureTask::fail(std::string message) {
+    m_state = State::Failed;
+    this->complete(Err(std::move(message)));
 }
 
-void SpriteFramesTask::invokeCallback() {
-    AL_DEBUG_ASSERT(this->finished());
-
-    if (this->failed()) {
-        if (m_callback) m_callback(Err(std::move(m_error)));
-    } else {
-        AL_DEBUG_ASSERT(m_spriteFrames.has_value());
-        if (m_callback) m_callback(Ok(std::move(*m_spriteFrames)));
-    }
-}
-
-TaskAdvanceResult SpriteFramesTask::advance(bool mainThread) {
-    if (this->finished()) return TaskAdvanceResult::Finished;
-    using enum TaskState;
-
-    switch (this->state()) {
-        case PrePlistRead: {
-            auto res = getFileData(m_path.c_str(), m_pathIsFull);
-            if (!res) {
-                this->fail(fmt::format("Failed to read plist file: {}", res.unwrapErr()));
-                return TaskAdvanceResult::Finished;
-            }
-            m_data = std::move(*res);
-            this->setState(PlistRead);
-        } break;
-
-        case PlistRead: {
-            auto result = parseSpriteFrames(m_data.data(), m_data.size(), false);
-            if (!result) {
-                this->fail(fmt::format("Failed to parse sprite frames (path: {}): {}", m_path, result.unwrapErr()));
-                return TaskAdvanceResult::Finished;
-            }
-            m_spriteFrames = std::move(*result);
-            this->setState(SpriteFramesReady);
-        } break;
-
-        default: {
-            AL_ASSERT(false && "Invalid state for SpriteFramesTask");
-        } break;
-    }
-
-    return TaskAdvanceResult::Pending;
-}
 
 }

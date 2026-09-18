@@ -1,8 +1,10 @@
 #pragma once
-#include "config.hpp"
+#include "util/config.hpp"
+#include "util/SmartPBO.hpp"
 #include "SpriteFrames.hpp"
 #include "Images.hpp"
-#include "SmartPBO.hpp"
+#include "Task.hpp"
+#include "TaskGroup.hpp"
 
 namespace AsyncLoad {
 
@@ -64,43 +66,10 @@ struct AL_DLL SpriteFramesLoadParams {
     Callback callback;
 };
 
-struct [[nodiscard("call .leak() or store TaskHandle to not cancel it immediately")]] AL_DLL TaskHandle {
-    TaskHandle() : m_id(0) {}
-    TaskHandle(uint64_t id);
-    TaskHandle(const TaskHandle&) = delete;
-    TaskHandle& operator=(const TaskHandle&) = delete;
-    TaskHandle(TaskHandle&&) noexcept;
-    TaskHandle& operator=(TaskHandle&&) noexcept;
-    ~TaskHandle();
-
-    void leak();
-    void cancel();
-
-    uint64_t id() const { return m_id; }
-
-private:
-    uint64_t m_id = 0;
-};
-
-struct [[nodiscard("call .leak() or store MultiTaskHandle to not cancel it immediately")]] AL_DLL MultiTaskHandle {
-    MultiTaskHandle() {}
-    MultiTaskHandle(const MultiTaskHandle&) = delete;
-    MultiTaskHandle& operator=(const MultiTaskHandle&) = delete;
-    MultiTaskHandle(MultiTaskHandle&&) noexcept = default;
-    MultiTaskHandle& operator=(MultiTaskHandle&&) noexcept = default;
-    ~MultiTaskHandle();
-
-    void leak();
-    void cancel();
-
-    void addTask(TaskHandle handle);
-
-private:
-    std::vector<TaskHandle> m_tasks;
-};
-
 class AL_DLL ALManager final {
 public:
+    struct Impl;
+
     static ALManager& get();
 
     ALManager(const ALManager&) = delete;
@@ -114,16 +83,24 @@ public:
     // Note that those may invoke the given callback *instantly* if cache is available.
     // In that case, they may return a blank TaskHandle.
 
-    /// Loads a CCTexture2D* from the given path, invokes callback on main thread (or instantly) when done or errored.
+    /// Creates a CCTexture2D from the image at the given path, invokes callback on main thread when done or errored.
     /// Uses CCTextureCache to skip loading if the texture is already loaded.
     /// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
+    ///
+    /// NOTE: if the texture exists in cache, this will never invoke the callback immediately.
+    /// There is a guarantee that the callback will be invoked to run as soon as possible (usually next frame, on main thread),
+    /// and if that is not enough, you can use `loadTextureEager`.
     TaskHandle loadTexture(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath = false);
 
-    /// Loads a spritesheet file from the given path, invokes callback on main thread (or instantly) when done or errored.
+    /// Like `loadTexture`, but if the texture is already in cache, the callback will be invoked immediately,
+    /// and the returned handle will be empty.
+    TaskHandle loadTextureEager(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath = false);
+
+    /// Loads a spritesheet file from the given path, invokes callback on main thread when done or errored.
     /// This loads the appropriate .png and .plist files in parallel and uses caches to avoid excessive loading.
     /// You must pass the name without any extension to this function.
     /// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
-    MultiTaskHandle loadSpritesheet(std::string_view name, geode::Function<void(geode::Result<>)> callback);
+    TaskGroup loadSpritesheet(std::string_view name, geode::Function<void(geode::Result<>)> callback);
 
     // Submission APIs - low-level APIs for high control.
     // They are fully thread-safe, and enqueue operations to happen in the background, giving you a handle to cancel it and letting you pass a callback.
@@ -147,19 +124,12 @@ public:
     SmartPBO requestPBO(size_t capacity);
     void returnPBO(SmartPBO pbo);
 
-    // Internal APIs, not for public use
-#ifdef AsyncLoad_EXPORTS
-    void cancelTask(uint64_t id);
-
-    void _freePBOs();
-    void _cancelAll();
-#endif
-
 private:
-    struct Impl;
     std::unique_ptr<Impl> m_impl;
 
     ALManager();
+
+    TaskHandle loadTextureInner(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath, bool eager);
 };
 
 }

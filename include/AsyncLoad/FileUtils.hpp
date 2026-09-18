@@ -1,7 +1,8 @@
 #pragma once
-#include "Util.hpp"
-#include "FileMappedBuffer.hpp"
-#include "BufferCache.hpp"
+#include "util/config.hpp"
+#include "util/BufferCache.hpp"
+#include "util/FileMappedBuffer.hpp"
+#include "util/BufferCache.hpp"
 #include <Geode/utils/ZStringView.hpp>
 #include <memory>
 

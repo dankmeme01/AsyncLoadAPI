@@ -1,4 +1,4 @@
-#include <AsyncLoad/assert.hpp>
+#include <AsyncLoad/util/assert.hpp>
 #include <Geode/utils/terminate.hpp>
 
 namespace AsyncLoad {

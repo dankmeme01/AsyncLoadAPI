@@ -4,6 +4,10 @@ using namespace geode::prelude;
 
 namespace AsyncLoad {
 
+AsyncSprite::~AsyncSprite() {
+    m_handle.cancel();
+}
+
 bool AsyncSprite::init() {
     return CCSprite::init();
 }

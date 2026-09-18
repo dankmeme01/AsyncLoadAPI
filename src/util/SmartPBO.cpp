@@ -1,4 +1,4 @@
-#include <AsyncLoad/SmartPBO.hpp>
+#include <AsyncLoad/util/SmartPBO.hpp>
 #include "OpenGL.hpp"
 
 namespace AsyncLoad {
