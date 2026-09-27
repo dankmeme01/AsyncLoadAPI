@@ -1,5 +1,5 @@
-#pragma once
 #import <Foundation/Foundation.h>
+#include <Geode/Geode.hpp>
 #include <AsyncLoad/FileUtils.hpp>
 #include <unistd.h>
 #include <fcntl.h>
@@ -86,8 +86,11 @@ Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
     if (data) {
         auto length = [data length];
         auto buffer = std::make_unique_for_overwrite<uint8_t[]>(length);
-        [data getBytes:buffer.data() length:length];
-        return Ok(std::move(buffer));
+        [data getBytes:buffer.get() length:length];
+        return Ok(OwnedBuffer {
+            std::move(buffer),
+            length
+        });
     }
 
     return Err("Failed to read path '{}': {}", path, [[error localizedDescription] UTF8String]);
