@@ -206,8 +206,46 @@ Result<RawImage> RawImage::create(cocos2d::CCImage* image, bool takeOwneship) {
     });
 }
 
+static bool isCGBI(std::span<const uint8_t> data) {
+    // Header of a CgBI image must match:
+    // 89 50 4E 47 0D 0A 1A 0A (PNG signature)
+    // ?? ?? ?? ?? (chunk length)
+    // 43 67 42 49 (chunk type, "CgBI")
+    // ...
+
+    uint8_t pngSignature[8] = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+    uint8_t cgbiSignature[4] = { 0x43, 0x67, 0x42, 0x49 }; // 'CgBI'
+
+    if (data.size() < 16) {
+        return false;
+    }
+
+    if (std::memcmp(data.data(), pngSignature, 8) != 0) {
+        return false;
+    }
+
+    if (std::memcmp(data.data() + 12, cgbiSignature, 4) != 0) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool useImagePlus(std::span<const uint8_t> data) {
+    if (!imgp::isAvailable()) return false;
+
+    if (isCGBI(data)) {
+        // CgBI is a proprietary Apple format used for game resources on iOS,
+        // it features premultiplied RGBA streams that cannot be decoded by libpng/libspng which are used in ImagePlus.
+        // thus we must use CCImage for them.
+        return false;
+    }
+
+    return true;
+}
+
 Result<RawImage> RawImage::create(std::span<const uint8_t> data) {
-    if (!imgp::isAvailable()) {
+    if (!useImagePlus(data)) {
         // no imageplus, just use ccimage
         auto img = Ref<CCImage>::adopt(new CCImage());
         if (!img->initWithImageData((void*)data.data(), data.size())) {
