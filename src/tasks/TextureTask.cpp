@@ -5,12 +5,6 @@
 
 using namespace geode::prelude;
 
-#ifdef GEODE_IS_WINDOWS
-static constexpr bool USE_MAPPING = true;
-#else
-static constexpr bool USE_MAPPING = false;
-#endif
-
 #ifdef AL_DEBUG
 # define AL_BENCHMARK(code) \
     do { \
@@ -86,7 +80,8 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
         case State::PreImageRead: {
             auto in = asp::Instant::now();
 
-            if constexpr (USE_MAPPING) {
+            // use memory mapping whenever possible
+            if (canMapFile(m_path.c_str())) {
                 auto res = getMappedFile(m_path.c_str(), m_pathIsFull);
                 if (!res) {
                     this->fail(fmt::format("failed to read image file (mapped mode): {}", res.unwrapErr()));
