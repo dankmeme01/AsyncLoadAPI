@@ -239,6 +239,8 @@ static bool useImagePlus(std::span<const uint8_t> data) {
         // CgBI is a proprietary Apple format used for game resources on iOS,
         // it features premultiplied RGBA streams that cannot be decoded by libpng/libspng which are used in ImagePlus.
         // thus we must use CCImage for them.
+
+        // TODO: in 2.209 (maybe sooner?), ImagePlus is planning to release CgBI support, so this can be removed.
         return false;
     }
 #endif
