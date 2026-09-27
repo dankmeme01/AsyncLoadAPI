@@ -1,6 +1,11 @@
 #pragma once
-#include <AsyncLoad/FileUtils.hpp>
 #import <Foundation/Foundation.h>
+#include <AsyncLoad/FileUtils.hpp>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <cerrno>
 
 using namespace geode::prelude;
 
@@ -86,6 +91,51 @@ Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
     }
 
     return Err("Failed to read path '{}': {}", path, [[error localizedDescription] UTF8String]);
+}
+
+// mmap implementation
+
+Result<FileMappedBuffer> getMappedFileImpl(ZStringView path) {
+    if (!canMapFile(path, true)) {
+        return Err("File '{}' cannot be memory mapped, it is not a file on disk", path);
+    }
+
+    int fd = open(path.c_str(), O_RDONLY);
+    if (fd == -1) {
+        return Err("Failed to open file '{}', errno: {}", path, errno);
+    }
+
+    return FileMappedBuffer::createWithFd(fd);
+}
+
+bool canMapFile(geode::ZStringView path, bool assumeFullPath) {
+    return true;
+}
+
+Result<> FileMappedBuffer::_map() {
+    struct stat s;
+    if (fstat(m_fd, &s) == -1) {
+        return Err("Failed to stat file '{}', errno: {}", m_fd, errno);
+    }
+
+    m_size = s.st_size;
+    auto ptr = mmap(nullptr, m_size, PROT_READ, MAP_PRIVATE, m_fd, 0);
+    if (ptr == MAP_FAILED) {
+        return Err("Failed to mmap file '{}', errno: {}", m_fd, errno);
+    }
+
+    m_ptr = (uint8_t*)ptr;
+    return Ok();
+}
+
+void FileMappedBuffer::_destroy() {
+    if (m_ptr) {
+        munmap(m_ptr, m_size);
+    }
+
+    if (m_fd != INVALID_FD) {
+        close(m_fd);
+    }
 }
 
 }

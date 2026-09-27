@@ -1,11 +1,14 @@
 #include <AsyncLoad/FileUtils.hpp>
 #include <Geode/utils/StringBuffer.hpp>
 #include <Geode/modify/CCFileUtils.hpp>
+#include <memory>
 
 using namespace geode::prelude;
 
 static asp::Mutex<std::unordered_map<uint64_t, gd::string>> g_cache;
-static std::atomic<std::shared_ptr<std::vector<std::string>>> g_searchPaths;
+// TODO: libc++ does not implement std::atomic<std::shared_ptr> in 2026, so use a spinlock.
+// track: https://github.com/llvm/llvm-project/issues/99980
+static asp::SpinLock<std::shared_ptr<std::vector<std::string>>> g_searchPaths;
 static std::atomic<size_t> g_cacheHits = 0;
 static std::atomic<size_t> g_cacheMisses = 0;
 static std::atomic<size_t> g_fpffCalls = 0;
@@ -97,7 +100,7 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
         for (const auto& p : paths) {
             vec->emplace_back(p);
         }
-        g_searchPaths.store(vec, std::memory_order::relaxed);
+        *g_searchPaths.lock() = std::move(vec);
     }
 };
 
@@ -254,7 +257,7 @@ gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<s
     // we discard resolution directories here, since no one uses them
 
     // try all search paths
-    auto searchPaths = g_searchPaths.load(std::memory_order::relaxed);
+    auto searchPaths = *g_searchPaths.lock();
     AL_DEBUG_ASSERT(searchPaths);
 
     for (const auto& sp : *searchPaths) {
@@ -335,7 +338,7 @@ Result<FileMappedBuffer> getMappedFile(
 }
 
 std::shared_ptr<std::vector<std::string>> getSearchPaths() {
-    return g_searchPaths.load(std::memory_order::relaxed);
+    return *g_searchPaths.lock();
 }
 
 size_t getFPFFCacheHits() {

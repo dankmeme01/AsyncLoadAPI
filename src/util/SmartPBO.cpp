@@ -39,18 +39,18 @@ SmartPBO SmartPBO::create(size_t capacity) {
 
 void SmartPBO::createFence() {
     if (m_fence || !g_opengl.supportsSync) return;
-    m_fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    m_fence = g_opengl.pglFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 }
 
 void SmartPBO::destroyFence() {
     if (!m_fence) return;
-    glDeleteSync(m_fence);
+    g_opengl.pglDeleteSync(m_fence);
     m_fence = nullptr;
 }
 
 bool SmartPBO::isBusy() const {
     if (!m_fence) return false;
-    GLenum result = glClientWaitSync(m_fence, GL_SYNC_FLUSH_COMMANDS_BIT, 0);
+    GLenum result = g_opengl.pglClientWaitSync(m_fence, GL_SYNC_FLUSH_COMMANDS_BIT, 0);
     return result == GL_TIMEOUT_EXPIRED;
 }
 

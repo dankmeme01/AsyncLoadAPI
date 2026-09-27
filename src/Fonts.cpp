@@ -10,7 +10,8 @@ static Ref<CCBMFontConfiguration> convert(BitmapFont& font) {
     auto padding = font.getPadding();
     conf->m_tPadding = {padding.left, padding.right, padding.top, padding.bottom};
     conf->m_nCommonHeight = font.getCommonHeight();
-    conf->m_sAtlasName = font.getAtlasName();
+    auto atl = font.getAtlasName();
+    conf->m_sAtlasName = {atl.begin(), atl.end()};
     conf->m_pCharacterSet = new gd::set<unsigned int>();
 
     auto& chars = font.getCharDefs();

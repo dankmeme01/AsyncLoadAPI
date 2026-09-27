@@ -46,7 +46,7 @@ void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* textur
         spriteFrame->release();
     }
 
-    sfcache->m_pLoadedFileNames->insert(gd::string{key});
+    sfcache->m_pLoadedFileNames->insert(gd::string{key.data(), key.size()});
     // for good measure, insert full path too
     sfcache->m_pLoadedFileNames->insert(fullPathForFilename(key));
 }

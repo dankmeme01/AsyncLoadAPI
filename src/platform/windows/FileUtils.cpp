@@ -10,7 +10,7 @@ bool fileExists(ZStringView path) {
     return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-Result<std::pair<HANDLE, LARGE_INTEGER>> doOpen(ZStringView path) {
+static Result<std::pair<HANDLE, LARGE_INTEGER>> doOpen(ZStringView path) {
     HANDLE file = CreateFileA(
         path.c_str(),
         GENERIC_READ,
@@ -82,7 +82,18 @@ Result<FileMappedBuffer> getMappedFileImpl(ZStringView path) {
     return FileMappedBuffer::createWithFd(file);
 }
 
+bool canMapFile(geode::ZStringView path, bool assumeFullPath) {
+    return true;
+}
+
 Result<> FileMappedBuffer::_map() {
+    LARGE_INTEGER fsize;
+    if (!GetFileSizeEx(m_fd, &fsize)) {
+        return Err("Failed to get file size, error: {}", m_fd, GetLastError());
+    }
+
+    m_size = fsize.QuadPart;
+
     auto mapping = CreateFileMapping(m_fd, NULL, PAGE_READONLY, 0, 0, NULL);
     if (!mapping) {
         return Err("Failed to create file mapping, error: {}", GetLastError());

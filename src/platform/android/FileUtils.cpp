@@ -4,6 +4,10 @@
 #include <android/asset_manager_jni.h>
 #include <jni.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <cerrno>
 #include <Geode/cocos/platform/android/jni/JniHelper.h>
 
 using namespace geode::prelude;
@@ -17,6 +21,8 @@ struct AAssetDeleter {
         }
     }
 };
+
+namespace AsyncLoad {
 
 static std::unique_ptr<AAsset, AAssetDeleter> openAAsset(std::string_view path, int mode) {
     if (!g_assetManager) {
@@ -59,7 +65,7 @@ static Result<OwnedBuffer> openAndReadAAssetOwned(std::string_view path) {
 
     size_t size = AAsset_getLength(asset.get());
     auto buffer = std::make_unique_for_overwrite<uint8_t[]>(size);
-    size_t bytesRead = AAsset_read(asset.get(), buffer.data(), size);
+    size_t bytesRead = AAsset_read(asset.get(), buffer.get(), size);
     if (bytesRead != size) {
         return Err("Failed to read asset '{}'", path);
     }
@@ -128,8 +134,6 @@ static Result<OwnedBuffer> openAndReadDiskOwned(const char* path) {
     return Ok(std::move(buffer));
 }
 
-namespace AsyncLoad {
-
 bool fileExists(ZStringView path) {
     std::string_view v{path};
     if (!v.empty() && v[0] == '/') {
@@ -171,6 +175,56 @@ Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
     } else {
         // relative path, read from .apk
         return openAndReadAAssetOwned(path);
+    }
+}
+
+// mmap implementation
+
+Result<FileMappedBuffer> getMappedFileImpl(ZStringView path) {
+    if (!canMapFile(path, true)) {
+        return Err("File '{}' cannot be memory mapped, it is not a file on disk", path);
+    }
+
+    int fd = open(path.c_str(), O_RDONLY);
+    if (fd == -1) {
+        return Err("Failed to open file '{}', errno: {}", path, errno);
+    }
+
+    return FileMappedBuffer::createWithFd(fd);
+}
+
+bool canMapFile(geode::ZStringView path, bool assumeFullPath) {
+    if (assumeFullPath) {
+        return !path.empty() && *path.begin() == '/';
+    }
+
+    auto fullpath = fullPathForFilename(path);
+    return !fullpath.empty() && fullpath[0] == '/';
+}
+
+Result<> FileMappedBuffer::_map() {
+    struct stat s;
+    if (fstat(m_fd, &s) == -1) {
+        return Err("Failed to stat file '{}', errno: {}", m_fd, errno);
+    }
+
+    m_size = s.st_size;
+    auto ptr = mmap(nullptr, m_size, PROT_READ, MAP_PRIVATE, m_fd, 0);
+    if (ptr == MAP_FAILED) {
+        return Err("Failed to mmap file '{}', errno: {}", m_fd, errno);
+    }
+
+    m_ptr = (uint8_t*)ptr;
+    return Ok();
+}
+
+void FileMappedBuffer::_destroy() {
+    if (m_ptr) {
+        munmap(m_ptr, m_size);
+    }
+
+    if (m_fd != INVALID_FD) {
+        close(m_fd);
     }
 }
 

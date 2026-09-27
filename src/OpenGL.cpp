@@ -95,15 +95,17 @@ bool OpenGLInfo::supportsGLExtension(std::string_view ext) {
 
 void OpenGLInfo::initFeatures() {
 #if defined(GEODE_IS_ANDROID)
-    pglTexStorage2D = (globed_PFNGLTEXSTORAGE2D)eglGetProcAddress("glTexStorage2D");
-    pglMapBufferRange = (globed_PFNGLMAPBUFFERRANGE)eglGetProcAddress("glMapBufferRange");
-    pglFenceSync = (globed_PFNGLFENCESYNC)eglGetProcAddress("glFenceSync");
-    pglClientWaitSync = (globed_PFNGLCLIENTWAITSYNC)eglGetProcAddress("glClientWaitSync");
+    pglTexStorage2D = (al_PFNGLTEXSTORAGE2D)eglGetProcAddress("glTexStorage2D");
+    pglMapBufferRange = (al_PFNGLMAPBUFFERRANGE)eglGetProcAddress("glMapBufferRange");
+    pglFenceSync = (al_PFNGLFENCESYNC)eglGetProcAddress("glFenceSync");
+    pglClientWaitSync = (al_PFNGLCLIENTWAITSYNC)eglGetProcAddress("glClientWaitSync");
+    pglDeleteSync = (al_PFNGLDELETESYNC)eglGetProcAddress("glDeleteSync");
 #else
     pglTexStorage2D = glTexStorage2D;
     pglMapBufferRange = glMapBufferRange;
     pglFenceSync = glFenceSync;
     pglClientWaitSync = glClientWaitSync;
+    pglDeleteSync = glDeleteSync;
 #endif
 
 #if defined(GEODE_IS_DESKTOP)
