@@ -18,8 +18,8 @@ struct SpriteFrameData::Impl {
 };
 
 SpriteFrameData::SpriteFrameData(std::unique_ptr<Impl> impl) : m_impl(std::move(impl)) {}
-SpriteFrameData::SpriteFrameData(SpriteFrameData&&) = default;
-SpriteFrameData& SpriteFrameData::operator=(SpriteFrameData&&) = default;
+SpriteFrameData::SpriteFrameData(SpriteFrameData&&) noexcept = default;
+SpriteFrameData& SpriteFrameData::operator=(SpriteFrameData&&) noexcept = default;
 SpriteFrameData::~SpriteFrameData() = default;
 
 const std::vector<SpriteFrame>& SpriteFrameData::getFrames() const {

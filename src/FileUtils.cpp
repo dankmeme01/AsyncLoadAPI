@@ -87,11 +87,13 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
         this->cloneSearchPaths();
     }
 
+#ifndef __APPLE__
     $override
     void removeAllPaths() {
         CCFileUtils::removeAllPaths();
         this->cloneSearchPaths();
     }
+#endif
 
     void cloneSearchPaths() {
         auto paths = this->getSearchPaths();
@@ -103,6 +105,10 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
         *g_searchPaths.lock() = std::move(vec);
     }
 };
+
+void refreshSearchPaths() {
+    HookedFileUtils::get().cloneSearchPaths();
+}
 
 gd::string getPathForFilename(std::string_view filename, std::string_view resolutionDirectory, std::string_view searchPath) {
     std::string_view file = filename;
@@ -258,7 +264,7 @@ gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<s
 
     // try all search paths
     auto searchPaths = *g_searchPaths.lock();
-    AL_DEBUG_ASSERT(searchPaths);
+    AL_ASSERT(searchPaths);
 
     for (const auto& sp : *searchPaths) {
         auto fp = getPathForFilename(filename, "", sp);
@@ -351,6 +357,11 @@ size_t getFPFFCacheMisses() {
 
 size_t getFPFFCalls() {
     return g_fpffCalls.load(std::memory_order::relaxed);
+}
+
+$on_mod(Loaded) {
+    // must be done on iOS, safe for other platforms to do it redundantly too
+    refreshSearchPaths();
 }
 
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "config.hpp"
+#include <string_view>
 
 // assert macro
 

@@ -61,6 +61,16 @@ AL_DLL bool canMapFile(geode::ZStringView path, bool assumeFullPath = false);
 /// without needing the main thread to access CCFileUtils.
 AL_DLL std::shared_ptr<std::vector<std::string>> getSearchPaths();
 
+/// Refreshes the cached search paths. This will copy all search paths in CCFileUtils into blaze's internal thread-safe cache,
+/// and future calls to `getSearchPaths` will also return the updated search paths.
+///
+/// This is automatically called in hooks for many CCFileUtils operations like `purgeFileUtils`, `updatePaths`, `addSearchPath`, etc.
+/// but if you manually modify the path vector, it is necessary to call this function.
+///
+/// The cache operation itself is thread-safe, but because this reads the search paths from CCFileUtils,
+/// it is only thread safe if you can ensure no one writes to the search paths at the same time (main thread is usually safe).
+AL_DLL void refreshSearchPaths();
+
 AL_DLL size_t getFPFFCacheHits();
 AL_DLL size_t getFPFFCacheMisses();
 AL_DLL size_t getFPFFCalls();

@@ -1,4 +1,6 @@
 #include <AsyncLoad/SpriteFrames.hpp>
+#include <AsyncLoad/util/hash.hpp>
+#include <AsyncLoad/util/Parse.hpp>
 #include <Geode/Geode.hpp>
 #include <optional>
 
@@ -15,7 +17,22 @@ struct SpriteFrameData::Impl {
     std::vector<SpriteFrame> frames;
 };
 
-SpriteFrameData::~SpriteFrameData() {}
+SpriteFrameData::SpriteFrameData(std::unique_ptr<Impl> impl) : m_impl(std::move(impl)) {}
+SpriteFrameData::SpriteFrameData(SpriteFrameData&&) noexcept = default;
+SpriteFrameData& SpriteFrameData::operator=(SpriteFrameData&&) noexcept = default;
+SpriteFrameData::~SpriteFrameData() = default;
+
+const std::vector<SpriteFrame>& SpriteFrameData::getFrames() const {
+    return m_impl->frames;
+}
+
+std::vector<SpriteFrame>& SpriteFrameData::getFrames() {
+    return m_impl->frames;
+}
+
+const SpriteFrameMetadata& SpriteFrameData::getMetadata() const {
+    return m_impl->metadata;
+}
 
 // Helper to convert NSString to string_view without copying
 static inline std::string_view to_view(NSString* s) {
@@ -35,8 +52,8 @@ std::optional<T> parseNode(id node) {
         return (bool)[node boolValue];
     } else if constexpr (std::is_same_v<T, CCPoint> || std::is_same_v<T, CCSize> || std::is_same_v<T, CCRect>) {
         if ([node isKindOfClass:[NSString class]]) {
-            if constexpr (std::is_same_v<T, CCRect>) return parseCCRect(to_view(node));
-            else return parseCCPoint<T>(to_view(node));
+            if constexpr (std::is_same_v<T, CCRect>) return parseRect(to_view(node));
+            else return parsePoint(to_view(node));
         }
     }
     return std::nullopt;
@@ -183,7 +200,6 @@ bool parseSpriteFrame(NSDictionary* dict, SpriteFrame& sframe, int format) {
         default: std::unreachable(); // this is already handled by parseSpriteFrames
     }
 }
-
 
 Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, bool ownBuffer) {
     @autoreleasepool {

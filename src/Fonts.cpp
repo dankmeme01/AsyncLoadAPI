@@ -1,10 +1,12 @@
 #include <AsyncLoad/Fonts.hpp>
 #include <AsyncLoad/FileUtils.hpp>
+#include <Geode/ui/Label.hpp>
 
 using namespace geode::prelude;
 
 namespace AsyncLoad {
 
+// semi-copied from prevter :D
 static Ref<CCBMFontConfiguration> convert(BitmapFont& font) {
     auto conf = new CCBMFontConfiguration();
     auto padding = font.getPadding();
@@ -40,7 +42,6 @@ static Ref<CCBMFontConfiguration> convert(BitmapFont& font) {
     return Ref<CCBMFontConfiguration>::adopt(conf);
 }
 
-// semi-copied from prevter :D
 Ref<CCBMFontConfiguration> loadFont(std::span<const uint8_t> data) {
     BitmapFont font;
     if (!font.initWithContents(std::string_view{reinterpret_cast<const char*>(data.data()), data.size()})) {
@@ -53,7 +54,12 @@ Ref<CCBMFontConfiguration> loadFont(std::span<const uint8_t> data) {
 Ref<CCBMFontConfiguration> loadFont(ZStringView path, bool useCache) {
     if (useCache) {
         auto font = BitmapFont::load(path);
-        return font ? convert(*font) : nullptr;
+        if (!font) {
+            log::warn("loadFont failed: BitmapFont::load failed for '{}'", path);
+            return nullptr;
+        }
+
+        return convert(*font);
     }
 
     // no geode cache, read and load manually

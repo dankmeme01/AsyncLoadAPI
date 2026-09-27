@@ -31,8 +31,8 @@ struct AL_DLL SpriteFrameData {
     SpriteFrameData(std::unique_ptr<Impl> impl);
     SpriteFrameData(const SpriteFrameData&) = delete;
     SpriteFrameData& operator=(const SpriteFrameData&) = delete;
-    SpriteFrameData(SpriteFrameData&&);
-    SpriteFrameData& operator=(SpriteFrameData&&);
+    SpriteFrameData(SpriteFrameData&&) noexcept;
+    SpriteFrameData& operator=(SpriteFrameData&&) noexcept;
     ~SpriteFrameData();
 
     const std::vector<SpriteFrame>& getFrames() const;
