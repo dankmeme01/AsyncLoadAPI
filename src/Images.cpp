@@ -163,8 +163,13 @@ void widenRGBtoRGBA(void* AL_RESTRICT destination, const void* AL_RESTRICT sourc
 }
 
 void RawImage::premultiply() {
+    if (premultiplied) {
+        return;
+    }
+
     if (hasAlpha) {
         premultiplyAlphaInplace(this->data.data(), this->sizeBytes());
+        premultiplied = true;
         return;
     }
 
@@ -179,6 +184,7 @@ Result<RawImage> RawImage::create(cocos2d::CCImage* image, bool takeOwneship) {
     uint64_t w = image->m_nWidth;
     uint64_t h = image->m_nHeight;
     bool alpha = image->m_bHasAlpha;
+    bool premultiplied = image->m_bPreMulti;
     uint64_t byteSize = w * h * (3 + (uint64_t)alpha);
 
     CachedBuffer buf;
@@ -196,6 +202,7 @@ Result<RawImage> RawImage::create(cocos2d::CCImage* image, bool takeOwneship) {
         .width = (uint32_t)w,
         .height = (uint32_t)h,
         .hasAlpha = alpha,
+        .premultiplied = premultiplied,
     });
 }
 

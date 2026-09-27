@@ -22,14 +22,18 @@ struct AL_DLL RawImage {
     CachedBuffer data;
     uint32_t width = 0;
     uint32_t height = 0;
+    /// Whether the image has an alpha channel (RGB vs RGBA)
     bool hasAlpha = false;
+    /// Whether the image has already been premultiplied. For example, on iOS loaded .png files are often premultiplied by default (CgBI)
+    bool premultiplied = false;
 
     size_t sizeBytes() const {
         return width * height * (3 + (size_t)hasAlpha);
     }
 
-    /// If the image has an alpha channel, this will premultiply the alpha into the RGB channels.
-    /// Otherwise, this converts the image into RGBA.
+    /// If the image has an alpha channel and has not been premultiplied, this will premultiply the alpha into the RGB channels.
+    /// Otherwise, if this is an RGB image, this converts the image into RGBA with an alpha channel of 255 for all pixels.
+    /// Does nothing when the image has an alpha channel and is already premultiplied.
     void premultiply();
 
     /// Decodes an image in a format like PNG, WEBP, etc.
