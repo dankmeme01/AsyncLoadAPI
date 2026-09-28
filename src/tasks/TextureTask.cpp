@@ -64,7 +64,7 @@ TextureTask::TextureTask(TextureLoadParams&& params, std::shared_ptr<Control> ct
 
 TextureTask::~TextureTask() {
     if (m_glTex != 0) {
-        glDeleteTextures(1, &m_glTex);
+        ccGLDeleteTexture(m_glTex);
     }
 
     if (m_glPbo) {
@@ -181,7 +181,7 @@ void TextureTask::preparePBO() {
     clearGLError();
 
     glGenTextures(1, &m_glTex);
-    glBindTexture(GL_TEXTURE_2D, m_glTex);
+    ccGLBindTexture2D(m_glTex);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -219,7 +219,7 @@ TaskAdvanceResult TextureTask::startAsyncPBOLoad() {
     checkGLDbg("glMapBufferRange");
 
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    ccGLBindTexture2D(0);
 
     if (!m_mappedPboPtr) {
         utils::terminate(
@@ -248,7 +248,7 @@ TaskAdvanceResult TextureTask::doFinalizeAsyncPBO() {
     GLboolean ok = glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
     AL_ASSERT(ok);
 
-    glBindTexture(GL_TEXTURE_2D, m_glTex);
+    ccGLBindTexture2D(m_glTex);
 
     int64_t w = m_image->width, h = m_image->height;
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -257,7 +257,7 @@ TaskAdvanceResult TextureTask::doFinalizeAsyncPBO() {
 
     // unbind texture & pbo
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    ccGLBindTexture2D(0);
 
     // return the pbo
     ALManager::get().returnPBO(std::move(m_glPbo));
@@ -280,7 +280,7 @@ TaskAdvanceResult TextureTask::startPBOLoad() {
     AL_BENCHMARK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_image->width, m_image->height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr));
 
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    ccGLBindTexture2D(0);
 
     auto texture = this->finalizeTexture(m_glTex);
     m_glTex = 0;
@@ -298,7 +298,7 @@ TaskAdvanceResult TextureTask::startNoPBOLoad() {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     glGenTextures(1, &num);
-    glBindTexture(GL_TEXTURE_2D, num);
+    ccGLBindTexture2D(num);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
