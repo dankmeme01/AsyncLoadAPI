@@ -11,6 +11,8 @@ struct TextureTask final : TypedTask<geode::Ref<cocos2d::CCTexture2D>> {
         PreImageRead,
         /// We have the data of the image file, and we are about to decode it from a format like PNG or WEBP into raw pixels.
         ImageRead,
+        /// We decoded the image into RGB/RGBA pixels, but it may not yet be premultiplied.
+        ImageDecoded,
         /// Image has been fully decoded and a raw image is available. A texture may now be created with this.
         ImageReady,
 
@@ -33,6 +35,7 @@ struct TextureTask final : TypedTask<geode::Ref<cocos2d::CCTexture2D>> {
     SmartPBO m_glPbo;
     void* m_mappedPboPtr = nullptr;
     bool m_pathIsFull;
+    bool m_pboMapped = false;
 
     TextureTask(TextureLoadParams&& params, std::shared_ptr<Control> ctl);
     ~TextureTask();
@@ -51,6 +54,7 @@ struct TextureTask final : TypedTask<geode::Ref<cocos2d::CCTexture2D>> {
     TaskAdvanceResult startPBOLoad();
     TaskAdvanceResult startNoPBOLoad();
     TaskAdvanceResult doFinalizeAsyncPBO();
+    void unmapPBO(bool unbind = false);
 
     geode::Ref<cocos2d::CCTexture2D> finalizeTexture(GLuint tex);
 

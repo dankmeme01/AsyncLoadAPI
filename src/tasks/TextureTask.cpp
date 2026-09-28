@@ -34,17 +34,12 @@ namespace AsyncLoad {
 TextureTask::TextureTask(TextureLoadParams&& params, std::shared_ptr<Control> ctl) : TypedTask(std::move(ctl)) {
     if (params.rawImage) {
         // user provided a raw image, no need to read any files
-        m_state = State::ImageReady;
+        m_state = State::ImageDecoded;
         m_image = std::move(params.rawImage);
         return;
     } else if (params.image) {
         // user provided a CCImage, same deal
-        m_state = State::ImageReady;
-
-        uint64_t w = params.image->m_nWidth;
-        uint64_t h = params.image->m_nHeight;
-        bool alpha = params.image->m_bHasAlpha;
-        uint64_t byteSize = w * h * (3 + (uint64_t)alpha);
+        m_state = State::ImageDecoded;
 
         auto res = RawImage::create(params.image);
         if (!res) {
@@ -68,6 +63,7 @@ TextureTask::~TextureTask() {
     }
 
     if (m_glPbo) {
+        this->unmapPBO(true);
         ALManager::get().returnPBO(std::move(m_glPbo));
     }
 }
@@ -121,8 +117,16 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
             return TaskAdvanceResult::RequiresMainThread;
         } break;
 
+        case State::ImageDecoded: {
+            AL_DEBUG_ASSERT(m_image && "m_image must be set in ImageDecoded state");
+            m_image->premultiply();
+            m_state = State::ImageReady;
+            return TaskAdvanceResult::RequiresMainThread;
+        } break;
+
         case State::ImageReady: {
             if (!mainThread) return TaskAdvanceResult::RequiresMainThread;
+            AL_DEBUG_ASSERT(m_image && m_image->hasAlpha && m_image->premultiplied && "m_image must have premultiplied alpha in ImageReady state");
 
             g_opengl.initialize();
 
@@ -164,7 +168,7 @@ Ref<CCTexture2D> TextureTask::finalizeTexture(GLuint num) {
     tex->m_ePixelFormat = m_image->hasAlpha ? kCCTexture2DPixelFormat_RGBA8888 : kCCTexture2DPixelFormat_RGB888;
     tex->m_fMaxS = 1.f;
     tex->m_fMaxT = 1.f;
-    tex->m_bHasPremultipliedAlpha = m_image->hasAlpha;
+    tex->m_bHasPremultipliedAlpha = m_image->premultiplied;
     tex->m_bHasMipmaps = false;
 
     tex->setShaderProgram(CCShaderCache::sharedShaderCache()->programForKey(kCCShader_PositionTexture));
@@ -223,12 +227,14 @@ TaskAdvanceResult TextureTask::startAsyncPBOLoad() {
 
     if (!m_mappedPboPtr) {
         utils::terminate(
-            "PreloadManager: failed to map a PBO, likely ran out of memory! "
-            "Please report this to the Globed developers and include the latest game log (not crashlog!)"
+            "failed to map a PBO, likely ran out of memory! "
+            "Please report this to the developers and include the latest game log (not crashlog!)"
         );
     }
 
+    m_pboMapped = true;
     m_state = State::AsyncPboReady;
+
     return TaskAdvanceResult::Pending;
 }
 
@@ -242,11 +248,25 @@ TaskAdvanceResult TextureTask::doWriteIntoAsyncPBO() {
     return TaskAdvanceResult::RequiresMainThread;
 }
 
+void TextureTask::unmapPBO(bool unbind) {
+    if (!m_glPbo) return;
+
+    if (m_pboMapped) {
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo.get());
+        GLboolean ok = glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+        AL_ASSERT(ok);
+
+        m_pboMapped = false;
+    }
+
+    if (unbind) {
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    }
+}
+
 TaskAdvanceResult TextureTask::doFinalizeAsyncPBO() {
     AL_BENCHMARK(clearGLError());
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo.get());
-    GLboolean ok = glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-    AL_ASSERT(ok);
+    this->unmapPBO(false);
 
     ccGLBindTexture2D(m_glTex);
 

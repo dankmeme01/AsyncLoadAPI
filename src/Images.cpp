@@ -178,6 +178,7 @@ void RawImage::premultiply() {
     widenRGBtoRGBA(newData.data(), this->data.data(), this->width * this->height);
     this->data = std::move(newData);
     this->hasAlpha = true;
+    this->premultiplied = true;
 }
 
 Result<RawImage> RawImage::create(cocos2d::CCImage* image, bool takeOwneship) {

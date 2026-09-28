@@ -35,7 +35,7 @@ using al_PFNGLFENCESYNC = GLsync(*)(GLenum condition, GLbitfield flags);
 using al_PFNGLCLIENTWAITSYNC = GLenum(*)(GLsync sync, GLbitfield flags, GLuint64 timeout);
 using al_PFNGLDELETESYNC = void(*)(GLsync GLsync);
 
-static struct OpenGLInfo {
+inline struct OpenGLInfo {
     al_PFNGLTEXSTORAGE2D   pglTexStorage2D   = nullptr;
     al_PFNGLMAPBUFFERRANGE pglMapBufferRange = nullptr;
     al_PFNGLFENCESYNC      pglFenceSync      = nullptr;
@@ -56,10 +56,6 @@ private:
     void initFeatures();
     static bool supportsGLExtension(std::string_view ext);
 } g_opengl;
-
-static void initGL() {
-    g_opengl.initialize();
-}
 
 static void checkGL(std::string_view where) {
     GLenum err;
