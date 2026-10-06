@@ -92,6 +92,9 @@ enum class TaskAdvanceResult : uint8_t {
     RequiresMainThread,
     /// Task has finished, either successfully or not. It may also have been cancelled.
     Finished,
+    /// Task needs to asynchronously wait for a certain condition. Returning this means the task wants to dequeue itself,
+    /// and will ensure it can enqueue itself again once the condition is met, via `ALManager::enqueueSuspendedTask`.
+    Suspend,
 };
 
 struct Task {

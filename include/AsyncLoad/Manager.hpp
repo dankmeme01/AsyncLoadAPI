@@ -121,6 +121,10 @@ public:
     /// or if you are rewriting the game core loop and want to make it so the game actually does work instead of sleeping between frames.
     void lendMainThread();
 
+    /// Enqueues the task to be polled by a worker thread or the main thread again soon.
+    /// This should not be used generally, only if you are implementing a custom task type and using `Suspend` as the result for asynchronous waiting.
+    void enqueueSuspendedTask(TaskHandle handle, bool mainThread = false);
+
     SmartPBO requestPBO(size_t capacity);
     void returnPBO(SmartPBO pbo);
 

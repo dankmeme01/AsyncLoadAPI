@@ -236,6 +236,10 @@ void ALManager::lendMainThread() {
     m_impl->update(0.f);
 }
 
+void ALManager::enqueueSuspendedTask(TaskHandle handle, bool mainThread) {
+    m_impl->resumeTask(handle.id(), mainThread);
+}
+
 }
 
 $on_game(TexturesUnloaded) {

@@ -15,6 +15,8 @@ struct ALManager::Impl : CCObject {
     asp::Mutex<std::unordered_map<uint64_t, std::shared_ptr<detail::TaskControlBase>>> m_activeTasks;
     asp::Channel<std::shared_ptr<Task>> m_taskQueue;
     asp::Channel<std::shared_ptr<Task>> m_MTtaskQueue;
+    asp::Mutex<std::unordered_map<uint64_t, std::shared_ptr<Task>>> m_suspendedTasks;
+    asp::Mutex<std::unordered_set<uint64_t>> m_earlyResumptions;
     asp::Mutex<std::deque<std::shared_ptr<detail::GroupControl>>> m_groupControlQueue;
     std::vector<SmartPBO> m_pbos;
 
@@ -26,6 +28,11 @@ struct ALManager::Impl : CCObject {
     void threadFunc();
     void submitTask(std::shared_ptr<Task> task, bool mainThread = false);
     void update(float dt);
+    void enqueueFinishedTask(std::shared_ptr<Task> task, TaskAdvanceResult advResult, bool mainThread);
+
+    /// Suspends the task if the early resumption set does not contain it
+    void suspendTask(std::shared_ptr<Task> task);
+    void resumeTask(uint64_t id, bool mainThread);
 
     void freePBOs();
     void cancelAll();
