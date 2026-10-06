@@ -11,8 +11,12 @@ void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* textur
     auto sfcache = CCSpriteFrameCache::get();
 
     for (const auto& frame : fs) {
+        if (sfcache->m_pSpriteFrames->objectForKey(frame.name)) {
+            continue;
+        }
+
         // create sprite frame
-        auto spriteFrame = new CCSpriteFrame();
+        auto spriteFrame = Ref<CCSpriteFrame>::adopt(new CCSpriteFrame());
         bool result = spriteFrame->initWithTexture(
             texture,
             frame.textureRect,
@@ -22,7 +26,6 @@ void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* textur
         );
 
         if (!result) {
-            spriteFrame->release();
             log::warn("Failed to initialize sprite frame for {}", frame.name);
             continue;
         }
@@ -42,8 +45,6 @@ void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* textur
                 );
             }
         }
-
-        spriteFrame->release();
     }
 
     sfcache->m_pLoadedFileNames->insert(gd::string{key.data(), key.size()});
