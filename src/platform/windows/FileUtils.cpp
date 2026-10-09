@@ -94,7 +94,7 @@ Result<> FileMappedBuffer::_map() {
 
     m_size = fsize.QuadPart;
 
-    auto mapping = CreateFileMapping(m_fd, NULL, PAGE_READONLY, 0, 0, NULL);
+    auto mapping = CreateFileMapping(m_fd, nullptr, PAGE_READONLY, 0, 0, nullptr);
     if (!mapping) {
         return Err("Failed to create file mapping, error: {}", GetLastError());
     }
