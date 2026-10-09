@@ -6,6 +6,7 @@
 // and even faster on MacOS and iOS due to binary plists being used.
 
 #include <Geode/Result.hpp>
+#include <unordered_set>
 #include <cocos2d.h>
 #include <asp/iter.hpp>
 #include "util/config.hpp"
@@ -23,7 +24,7 @@ struct AL_DLL SpriteFrame {
 
 struct AL_DLL SpriteFrameMetadata {
     int format = -1;
-    std::string textureFileName = "";
+    std::string textureFileName;
 };
 
 struct AL_DLL SpriteFrameData {
@@ -36,7 +37,8 @@ struct AL_DLL SpriteFrameData {
     ~SpriteFrameData();
 
     const std::vector<SpriteFrame>& getFrames() const;
-    std::vector<SpriteFrame>& getFrames();
+    std::vector<SpriteFrame>& getFrames() &;
+    std::vector<SpriteFrame> getFrames() &&;
 
     const SpriteFrameMetadata& getMetadata() const;
 
@@ -44,16 +46,22 @@ private:
     std::unique_ptr<Impl> m_impl;
 };
 
+struct ParseSpriteFramesOptions {
+    std::unordered_set<std::string> ignoreFrames;
+    bool passBufferOwnership = false;
+};
+
 /// Parses data from a .plist (binary on apple platforms, regular xml on others) file into a structure holding multiple sprite frames.
 /// The structure can then be passed to `addSpriteFrames` to add them into `CCSpriteFrameCache`.
 /// If `passBufferOwnership` is `true`, then you must not free the data buffer yourself, and it will be freed for you.
 /// Otherwise, ensure that you keep the buffer for as long as the returned `SpriteFrameData` struct itself, because it may contain borrowed data.
 /// This is fully thread-safe.
-AL_DLL geode::Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, bool passBufferOwnership = false);
+AL_DLL geode::Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, const ParseSpriteFramesOptions& options = {});
 
 /// Adds sprite frames parsed from `parseSpriteFrames` into `CCSpriteFrameCache`.
 /// `key` is the key that will be used for sprite frame cache, typically it is the filename, aka `spritesheet.plist`
 /// This is not thread-safe.
 AL_DLL void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* texture, std::string_view key);
+AL_DLL void addSpriteFrames(const std::vector<SpriteFrame>& frames, cocos2d::CCTexture2D* texture, std::string_view key);
 
 }

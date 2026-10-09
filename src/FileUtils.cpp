@@ -9,6 +9,7 @@ static asp::Mutex<std::unordered_map<uint64_t, gd::string>> g_cache;
 // TODO: libc++ does not implement std::atomic<std::shared_ptr> in 2026, so use a spinlock.
 // track: https://github.com/llvm/llvm-project/issues/99980
 static asp::SpinLock<std::shared_ptr<std::vector<std::string>>> g_searchPaths;
+static std::atomic<bool> g_texturePacks{false};
 static std::atomic<size_t> g_cacheHits = 0;
 static std::atomic<size_t> g_cacheMisses = 0;
 static std::atomic<size_t> g_fpffCalls = 0;
@@ -20,9 +21,6 @@ namespace AsyncLoad {
 std::string getPathForDirAndFilenameImpl(geode::ZStringView directory, geode::ZStringView filename);
 #endif
 
-enum class TextureQuality {
-    Low, Medium, High
-};
 
 struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
     static HookedFileUtils& get() {
@@ -43,66 +41,64 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
         guard->clear();
     }
 
-    // Hooks that may modify search paths, for cloning them into a thread-safe variable
+    // Many of those methods may call each other, avoid cloning unnecessary by using a raii variable
+    static inline thread_local size_t s_depth = 0;
+    struct ClonePathsRaii {
+        ClonePathsRaii() {
+            ++s_depth;
+        }
+
+        ~ClonePathsRaii() {
+            --s_depth;
+            if (s_depth == 0) {
+                HookedFileUtils::get().cloneSearchPaths();
+            }
+        }
+    };
 
     $override
     void setSearchPaths(const gd::vector<gd::string>& searchPaths) {
+        ClonePathsRaii _;
         CCFileUtils::setSearchPaths(searchPaths);
-        this->cloneSearchPaths();
-    }
-
-    $override
-    void addTexturePack(CCTexturePack pack) {
-        CCFileUtils::addTexturePack(std::move(pack));
-        this->cloneSearchPaths();
-    }
-
-    $override
-    void removeTexturePack(std::string_view id) {
-        CCFileUtils::removeTexturePack(id);
-        this->cloneSearchPaths();
-    }
-
-    $override
-    void addPriorityPath(const char* path) {
-        CCFileUtils::addPriorityPath(path);
-        this->cloneSearchPaths();
-    }
-
-    $override
-    void updatePaths() {
-        CCFileUtils::updatePaths();
-        this->cloneSearchPaths();
     }
 
     $override
     void addSearchPath(const char* path) {
+        ClonePathsRaii _;
         CCFileUtils::addSearchPath(path);
-        this->cloneSearchPaths();
     }
 
     $override
     void removeSearchPath(const char *path) {
+        ClonePathsRaii _;
         CCFileUtils::removeSearchPath(path);
-        this->cloneSearchPaths();
+    }
+
+    static void updatePathsDetour(HookedFileUtils* self) {
+        ClonePathsRaii _;
+        self->updatePaths();
     }
 
 #ifndef __APPLE__
     $override
     void removeAllPaths() {
+        ClonePathsRaii _;
         CCFileUtils::removeAllPaths();
-        this->cloneSearchPaths();
     }
 #endif
 
     void cloneSearchPaths() {
         auto paths = this->getSearchPaths();
+        AL_TRACE("Cloning search paths ({} paths)", paths.size());
+
         auto vec = std::make_shared<std::vector<std::string>>();
         vec->reserve(paths.size());
         for (const auto& p : paths) {
             vec->emplace_back(p);
         }
+
         *g_searchPaths.lock() = std::move(vec);
+        g_texturePacks.store(this->getTexturePackCount() > 0, std::memory_order::relaxed);
     }
 };
 
@@ -110,7 +106,10 @@ void refreshSearchPaths() {
     HookedFileUtils::get().cloneSearchPaths();
 }
 
-gd::string getPathForFilename(std::string_view filename, std::string_view resolutionDirectory, std::string_view searchPath) {
+gd::string getPathForFilename(std::string_view filename, std::string_view searchPath) {
+    // unused
+    std::string_view resolutionDirectory;
+
     std::string_view file = filename;
     std::string_view filePath;
 
@@ -139,7 +138,7 @@ gd::string getPathForFilename(std::string_view filename, std::string_view resolu
 }
 
 
-static TextureQuality getTextureQuality() {
+TextureQuality getTextureQuality() {
     float sf = CCDirector::get()->getContentScaleFactor();
     if (sf >= 4.f) {
         return TextureQuality::High;
@@ -160,7 +159,7 @@ static uint64_t fnv1aHash(std::string_view s) {
 }
 
 // returns the quality suffix for the given quality, e.g. "", "-hd", "-uhd"
-static std::string_view getQualitySuffix(TextureQuality quality) {
+std::string_view getQualitySuffix(TextureQuality quality) {
     switch (quality) {
         case TextureQuality::Low: {
             return "";
@@ -267,7 +266,7 @@ gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<s
     AL_ASSERT(searchPaths);
 
     for (const auto& sp : *searchPaths) {
-        auto fp = getPathForFilename(filename, "", sp);
+        auto fp = getPathForFilename(filename, sp);
         if (!fp.empty()) {
             cachePath(hash, fp);
             return fp;
@@ -347,6 +346,10 @@ std::shared_ptr<std::vector<std::string>> getSearchPaths() {
     return *g_searchPaths.lock();
 }
 
+bool anyTexturePacksLoaded() {
+    return g_texturePacks.load(std::memory_order::relaxed);
+}
+
 size_t getFPFFCacheHits() {
     return g_cacheHits.load(std::memory_order::relaxed);
 }
@@ -360,6 +363,17 @@ size_t getFPFFCalls() {
 }
 
 $on_mod(Loaded) {
+    // updatePaths is a Geode.dll function, we must hook it
+    // scary geode hook!
+    auto func = getNonVirtual(&CCFileUtils::updatePaths);
+    auto result = Mod::get()->hook(
+        reinterpret_cast<void*>(func),
+        &HookedFileUtils::updatePathsDetour,
+        "cocos2d::CCFileUtils::updatePaths",
+        tulip::hook::TulipConvention::Thiscall
+    );
+    AL_ASSERT(result.isOk() && "failed to hook updatePaths");
+
     // must be done on iOS, safe for other platforms to do it redundantly too
     refreshSearchPaths();
 }

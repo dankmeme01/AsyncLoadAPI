@@ -4,7 +4,7 @@
 
 namespace AsyncLoad {
 
-struct SpriteFramesTask final : TypedTask<SpriteFrameData> {
+struct SpriteFramesTask final : CrtpTask<SpriteFramesTask, SpriteFrameData> {
     enum class State : uint8_t {
         /// We have the path and we are about to read the file from the disk.
         PrePlistRead,
@@ -18,6 +18,7 @@ struct SpriteFramesTask final : TypedTask<SpriteFrameData> {
 
     asp::BoxedString m_path;
     CachedBufferChunk m_data;
+    std::unordered_set<std::string> m_ignoreFrames;
     State m_state;
     bool m_pathIsFull;
 
@@ -28,10 +29,6 @@ struct SpriteFramesTask final : TypedTask<SpriteFrameData> {
     TaskAdvanceResult advance(bool mainThread = false) override;
 
     void fail(std::string message);
-
-    std::string_view typeName() const override {
-        return "SpriteFramesTask";
-    }
 };
 
 }

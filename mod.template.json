@@ -23,6 +23,12 @@
             "type": "bool",
             "default": true,
             "name": "Async PBOs"
+        },
+        "merge-plists": {
+            "type": "bool",
+            "default": true,
+            "name": "Merge Candidate Sheets",
+            "description": "Replaces the spritesheet load behavior to be consistent with the <cy>Texture Loader</c> mod, by checking all search paths for the spritesheet and merging frames.\n\nIn simple terms, this means loading an outdated texture pack will not cause textures added in a recent GD update to be missing."
         }
     }
 }

@@ -4,7 +4,7 @@
 
 namespace AsyncLoad {
 
-struct ImageTask final : TypedTask<RawImage> {
+struct ImageTask final : CrtpTask<ImageTask, RawImage> {
     enum class State : uint8_t {
         /// We have the path and we are about to read the file from the disk.
         PreImageRead,
@@ -28,10 +28,6 @@ struct ImageTask final : TypedTask<RawImage> {
     TaskAdvanceResult advance(bool mainThread = false) override;
 
     void fail(std::string message);
-
-    std::string_view typeName() const override {
-        return "ImageTask";
-    }
 };
 
 }

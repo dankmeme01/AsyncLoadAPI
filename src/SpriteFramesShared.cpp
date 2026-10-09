@@ -6,11 +6,13 @@ using namespace geode::prelude;
 namespace AsyncLoad {
 
 void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* texture, std::string_view key) {
-    auto& fs = frames.getFrames();
+    return addSpriteFrames(frames.getFrames(), texture, key);
+}
 
+void addSpriteFrames(const std::vector<SpriteFrame>& frames, cocos2d::CCTexture2D* texture, std::string_view key) {
     auto sfcache = CCSpriteFrameCache::get();
 
-    for (const auto& frame : fs) {
+    for (const auto& frame : frames) {
         if (sfcache->m_pSpriteFrames->objectForKey(frame.name)) {
             continue;
         }
@@ -47,9 +49,11 @@ void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* textur
         }
     }
 
-    sfcache->m_pLoadedFileNames->insert(gd::string{key.data(), key.size()});
-    // for good measure, insert full path too
-    sfcache->m_pLoadedFileNames->insert(fullPathForFilename(key));
+    if (!key.empty()) {
+        sfcache->m_pLoadedFileNames->insert(gd::string{key.data(), key.size()});
+        // for good measure, insert full path too
+        sfcache->m_pLoadedFileNames->insert(fullPathForFilename(key));
+    }
 }
 
 }

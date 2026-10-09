@@ -26,8 +26,12 @@ const std::vector<SpriteFrame>& SpriteFrameData::getFrames() const {
     return m_impl->frames;
 }
 
-std::vector<SpriteFrame>& SpriteFrameData::getFrames() {
+std::vector<SpriteFrame>& SpriteFrameData::getFrames() & {
     return m_impl->frames;
+}
+
+std::vector<SpriteFrame> SpriteFrameData::getFrames() && {
+    return std::move(m_impl->frames);
 }
 
 const SpriteFrameMetadata& SpriteFrameData::getMetadata() const {
@@ -201,9 +205,9 @@ bool parseSpriteFrame(NSDictionary* dict, SpriteFrame& sframe, int format) {
     }
 }
 
-Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, bool ownBuffer) {
+Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, const ParseSpriteFramesOptions& options) {
     @autoreleasepool {
-        NSData* nsData = [NSData dataWithBytesNoCopy:data length:size freeWhenDone:ownBuffer];
+        NSData* nsData = [NSData dataWithBytesNoCopy:data length:size freeWhenDone:options.passBufferOwnership];
         NSError* error = nil;
 
         NSDictionary* root = [NSPropertyListSerialization
@@ -239,6 +243,10 @@ Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, bool ownBuffe
 
             SpriteFrame sframe;
             sframe.name = [frameName UTF8String];
+
+            if (options.ignoreFrames.contains(sframe.name)) {
+                continue;
+            }
 
             if (!parseSpriteFrame(frameDict, sframe, sfdata->metadata.format)) {
                 log::warn("Failed to parse frame '{}', skipping!", sframe.name);

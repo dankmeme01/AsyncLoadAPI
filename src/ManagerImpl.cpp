@@ -54,7 +54,7 @@ void ALManager::Impl::threadFunc() {
     }
 }
 
-void ALManager::Impl::submitTask(std::shared_ptr<Task> task, bool mainThread) {
+void ALManager::Impl::submitTask(std::shared_ptr<Task> task) {
     // bypass warning about side effects in typeid
     auto& t = *task;
 
@@ -64,7 +64,7 @@ void ALManager::Impl::submitTask(std::shared_ptr<Task> task, bool mainThread) {
     active->emplace(task->id(), task->control());
     active.unlock();
 
-    if (mainThread) {
+    if (task->wantsInitialMainThread()) {
         m_MTtaskQueue.push(std::move(task));
     } else {
         m_taskQueue.push(std::move(task));
@@ -112,7 +112,7 @@ void ALManager::Impl::update(float dt) {
             m_activeTasks.lock()->erase(task->id());
 
             // task finished (error / success / cancelled), remove the task and run the callback if it wasn't cancelled
-            AL_TRACE("{} finished after {}, state: {}", task->name(), task->elapsed(), task->status());
+            AL_TRACE_NOISY("{} finished after {}, state: {}", task->name(), task->elapsed(), task->status());
             if (!task->cancelled()) {
                 // invoke success/error callback
                 task->invokeCallback();

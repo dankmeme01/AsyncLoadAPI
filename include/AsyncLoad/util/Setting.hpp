@@ -1,7 +1,7 @@
 #pragma once
 #include <Geode/loader/Mod.hpp>
 
-namespace blaze {
+namespace AsyncLoad {
 
 template <geode::utils::string::ConstexprString S, typename T>
 inline T const& getSettingFast() {

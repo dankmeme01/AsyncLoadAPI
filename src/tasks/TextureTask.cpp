@@ -31,7 +31,7 @@ static bool shouldUseAsyncPBO() {
 }
 
 namespace AsyncLoad {
-TextureTask::TextureTask(TextureLoadParams&& params, std::shared_ptr<Control> ctl) : TypedTask(std::move(ctl)) {
+TextureTask::TextureTask(TextureLoadParams&& params, std::shared_ptr<Control> ctl) : CrtpTask(std::move(ctl)) {
     if (params.rawImage) {
         // user provided a raw image, no need to read any files
         m_state = State::ImageDecoded;

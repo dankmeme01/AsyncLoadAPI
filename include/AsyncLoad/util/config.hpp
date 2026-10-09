@@ -25,6 +25,8 @@
 
 #ifdef AL_DEBUG
 # define AL_TRACE(...) log::debug(__VA_ARGS__)
+# define AL_TRACE_NOISY(...) log::trace(__VA_ARGS__)
 #else
 # define AL_TRACE(...) do {} while (0)
+# define AL_TRACE_NOISY(...) do {} while (0)
 #endif

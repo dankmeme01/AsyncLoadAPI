@@ -5,7 +5,7 @@
 
 namespace AsyncLoad {
 
-struct TextureTask final : TypedTask<geode::Ref<cocos2d::CCTexture2D>> {
+struct TextureTask final : CrtpTask<TextureTask, geode::Ref<cocos2d::CCTexture2D>> {
     enum class State : uint8_t {
         /// We have the path and we are about to read the file from the disk.
         PreImageRead,
@@ -57,10 +57,6 @@ struct TextureTask final : TypedTask<geode::Ref<cocos2d::CCTexture2D>> {
     void unmapPBO(bool unbind = false);
 
     geode::Ref<cocos2d::CCTexture2D> finalizeTexture(GLuint tex);
-
-    std::string_view typeName() const override {
-        return "TextureTask";
-    }
 };
 
 }

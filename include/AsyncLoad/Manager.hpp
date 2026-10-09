@@ -63,7 +63,21 @@ struct AL_DLL SpriteFramesLoadParams {
     /// On Apple systems, this is assumed to be a binary plist format. Everywhere else, it is XML data.
     CachedBufferChunk data;
 
+    /// Frames to ignore
+    std::unordered_set<std::string> ignoreFrames;
+
     Callback callback;
+};
+
+enum class SpritesheetMergeBehavior {
+    /// Use the default behavior, which depends on two variables:
+    /// 1. If no texture packs are added, no merging is done
+    /// 2. Merging is done depending on the mod setting "Merge Candidate Sheets" (default: true)
+    Default,
+    /// Always merge plists
+    Always,
+    /// Never merge plists
+    Never,
 };
 
 class AL_DLL ALManager final {
@@ -96,11 +110,15 @@ public:
     /// and the returned handle will be empty.
     TaskHandle loadTextureEager(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath = false);
 
-    /// Loads a spritesheet file from the given path, invokes callback on main thread when done or errored.
+    /// Loads a spritesheet file by the given name, invokes callback on main thread when done or errored.
     /// This loads the appropriate .png and .plist files in parallel and uses caches to avoid excessive loading.
-    /// You must pass the name without any extension to this function.
+    /// You must pass the name without any extension to this function, e.g. `GJ_GameSheet_01`.
     /// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
-    TaskGroup loadSpritesheet(std::string_view name, geode::Function<void(geode::Result<>)> callback);
+    TaskHandle loadSpritesheet(
+        std::string_view name,
+        geode::Function<void(geode::Result<>)> callback,
+        SpritesheetMergeBehavior mergeBehavior = SpritesheetMergeBehavior::Default
+    );
 
     // Submission APIs - low-level APIs for high control.
     // They are fully thread-safe, and enqueue operations to happen in the background, giving you a handle to cancel it and letting you pass a callback.

@@ -7,6 +7,7 @@
 #include "tasks/TextureTask.hpp"
 #include "tasks/SpriteFramesTask.hpp"
 #include "tasks/ReadyTask.hpp"
+#include "tasks/SpritesheetTask.hpp"
 
 using namespace geode::prelude;
 
@@ -27,27 +28,18 @@ ALManager& ALManager::get() {
 }
 
 TaskHandle ALManager::submitImageLoad(ImageLoadParams&& params) {
-    auto control = std::make_shared<ImageTask::Control>(std::move(params.callback));
-    auto task = std::make_shared<ImageTask>(std::move(params), control);
-
-    m_impl->submitTask(task);
-    return TaskHandle{control};
+    auto cb = std::move(params.callback);
+    return m_impl->createAndSubmitTask<ImageTask>(std::move(cb), std::move(params));
 }
 
 TaskHandle ALManager::submitTextureLoad(TextureLoadParams&& params) {
-    auto control = std::make_shared<TextureTask::Control>(std::move(params.callback));
-    auto task = std::make_shared<TextureTask>(std::move(params), control);
-
-    m_impl->submitTask(task);
-    return TaskHandle{control};
+    auto cb = std::move(params.callback);
+    return m_impl->createAndSubmitTask<TextureTask>(std::move(cb), std::move(params));
 }
 
 TaskHandle ALManager::submitSpriteFramesLoad(SpriteFramesLoadParams&& params) {
-    auto control = std::make_shared<SpriteFramesTask::Control>(std::move(params.callback));
-    auto task = std::make_shared<SpriteFramesTask>(std::move(params), control);
-
-    m_impl->submitTask(task);
-    return TaskHandle{control};
+    auto cb = std::move(params.callback);
+    return m_impl->createAndSubmitTask<SpriteFramesTask>(std::move(cb), std::move(params));
 }
 
 TaskHandle ALManager::loadTextureInner(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath, bool eager) {
@@ -71,7 +63,7 @@ TaskHandle ALManager::loadTextureInner(geode::ZStringView path, TextureLoadParam
             auto control = std::make_shared<RTask::Control>(std::move(callback));
             auto task = std::make_shared<RTask>(Ok(cachedTex), control);
 
-            m_impl->submitTask(task, true);
+            m_impl->submitTask(task);
             return TaskHandle{control};
         }
     }
@@ -97,92 +89,8 @@ TaskHandle ALManager::loadTextureEager(ZStringView path, TextureLoadParams::Call
     return loadTextureInner(path, std::move(callback), fullPath, true);
 }
 
-struct PendingSpritesheetState {
-    Ref<CCTexture2D> texture;
-    std::optional<SpriteFrameData> spriteFrames;
-    Function<void(Result<>)> callback;
-    std::string name;
-};
-
-TaskGroup ALManager::loadSpritesheet(std::string_view name, Function<void(Result<>)> callback) {
-    TaskGroup group;
-    group.setFailBehavior(TaskGroupFailBehavior::Cancel);
-
-    auto pngPath = fmt::format("{}.png", name);
-    auto plistPath = fmt::format("{}.plist", name);
-
-    // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
-    // without running fullPathForFilename. we will replicate this and also use it as a unique key.
-    auto plistKey = gd::string{plistPath};
-    auto sfc = CCSpriteFrameCache::get();
-    if (sfc->m_pLoadedFileNames->contains(plistKey)) {
-        // already loaded!
-        group.close([cb = std::move(callback)](TaskGroupResult results) mutable {
-            if (cb) cb(Ok());
-        });
-        return group;
-    }
-
-    auto pstate = std::make_shared<PendingSpritesheetState>();
-    pstate->callback = std::move(callback);
-    pstate->name = std::string{plistKey};
-
-    // Load the texture first, since this step may succeed immediately if cached
-    auto textureTask = this->loadTextureEager(pngPath, [this, pstate](Result<Ref<CCTexture2D>> result) {
-        if (result) {
-            pstate->texture = std::move(*result);
-        } else {
-            log::warn("ALManager: loadSpritesheet texture load failed for {}: {}", pstate->name, result.unwrapErr());
-        }
-    });
-    if (textureTask) {
-        group.add(std::move(textureTask));
-    }
-
-    // and then start loading the plist in background
-    auto framesTask = this->submitSpriteFramesLoad({
-        .path = plistPath,
-        .isFullPath = false,
-        .callback = [this, pstate](Result<SpriteFrameData> result) {
-            if (result) {
-                pstate->spriteFrames = std::move(*result);
-            } else {
-                log::warn("ALManager: loadSpritesheet plist load failed for {}: {}", pstate->name, result.unwrapErr());
-            }
-        },
-    });
-    group.add(std::move(framesTask));
-    group.close([pstate](TaskGroupResult results) mutable {
-        if (results.status == GroupStatus::Completed) {
-            if (!pstate->texture || !pstate->spriteFrames) {
-                // likely one of the subtasks got cancelled
-                log::warn("ALManager: loadSpritesheet completed but one of the subtasks did not complete through. Subtask results:");
-                for (auto& r : results.results) {
-                    log::warn("ALManager: - subtask {}: {} (cancelled: {})", r.handle.name(), r.result, r.cancelled);
-                }
-
-                if (pstate->callback) pstate->callback(Err("one or more subtasks failed or was cancelled, see logs"));
-                return;
-            }
-
-            auto& sf = *pstate->spriteFrames;
-            addSpriteFrames(sf, pstate->texture, pstate->name);
-
-            if (pstate->callback) pstate->callback(Ok());
-        } else {
-            std::string err = "unknown error";
-            for (auto& r : results.results) {
-                if (r.result && r.result->isErr()) {
-                    err = r.result->unwrapErr();
-                    break;
-                }
-            }
-
-            if (pstate->callback) pstate->callback(Err("failed to load spritesheet: {}", err));
-        }
-    });
-
-    return group;
+TaskHandle ALManager::loadSpritesheet(std::string_view name, Function<void(Result<>)> callback, SpritesheetMergeBehavior mergeBehavior) {
+    return m_impl->createAndSubmitTask<SpritesheetTask>(std::move(callback), name, mergeBehavior);
 }
 
 SmartPBO ALManager::requestPBO(size_t capacity) {

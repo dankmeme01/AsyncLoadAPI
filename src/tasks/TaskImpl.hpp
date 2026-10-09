@@ -1,9 +1,10 @@
 #pragma once
 #include <AsyncLoad/Task.hpp>
 #include <AsyncLoad/util/assert.hpp>
-#include <asp/time.hpp>
 #include <Geode/utils/random.hpp>
 #include <Geode/Result.hpp>
+#include <asp/time.hpp>
+#include <arc/future/PollableMetadata.hpp>
 
 namespace AsyncLoad {
 
@@ -111,6 +112,10 @@ struct Task {
     virtual void addCompletionHook(geode::Function<void()> hook) = 0;
     virtual asp::Duration elapsed() const = 0;
     virtual std::string name() const = 0;
+    virtual bool wantsInitialMainThread() const {
+        return false;
+    }
+
     virtual std::string_view typeName() const {
         return "Task";
     }
@@ -121,6 +126,10 @@ struct Task {
 
     bool pending() const {
         return this->status() == TaskStatus::Pending;
+    }
+
+    TaskHandle handle() const {
+        return TaskHandle{this->control()};
     }
 };
 
@@ -183,6 +192,20 @@ struct TypedTask : Task {
     std::string name() const override {
         if (!m_ctl->m_name.empty()) return m_ctl->m_name;
         return fmt::format("{} {}", this->typeName(), m_ctl->m_id);
+    }
+
+    TaskHandle handle() const {
+        return TaskHandle{m_ctl};
+    }
+};
+
+template <typename Derived, typename T>
+struct CrtpTask : TypedTask<T> {
+    using TypedTask<T>::TypedTask;
+
+    std::string_view typeName() const override {
+        auto [p, size] = arc::getTypename<Derived>();
+        return {p, size};
     }
 };
 

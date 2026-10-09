@@ -5,7 +5,7 @@ using namespace geode::prelude;
 
 namespace AsyncLoad {
 
-ImageTask::ImageTask(ImageLoadParams&& params, std::shared_ptr<Control> ctl) : TypedTask(std::move(ctl)) {
+ImageTask::ImageTask(ImageLoadParams&& params, std::shared_ptr<Control> ctl) : CrtpTask(std::move(ctl)) {
     if (!params.data.empty()) {
         // user provided raw image data, no need to read any files
         m_state = State::ImageRead;

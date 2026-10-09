@@ -26,7 +26,16 @@ struct ALManager::Impl : CCObject {
     static Impl& get();
 
     void threadFunc();
-    void submitTask(std::shared_ptr<Task> task, bool mainThread = false);
+
+    template <typename Task, typename Cb, typename... Args>
+    TaskHandle createAndSubmitTask(Cb&& cb, Args&&... args) {
+        auto control = std::make_shared<typename Task::Control>(std::forward<Cb>(cb));
+        auto task = std::make_shared<Task>(std::forward<Args>(args)..., std::move(control));
+        this->submitTask(task);
+        return task->handle();
+    }
+
+    void submitTask(std::shared_ptr<Task> task);
     void update(float dt);
     void enqueueFinishedTask(std::shared_ptr<Task> task, TaskAdvanceResult advResult, bool mainThread);
 

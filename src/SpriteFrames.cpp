@@ -26,8 +26,12 @@ const std::vector<SpriteFrame>& SpriteFrameData::getFrames() const {
     return m_impl->frames;
 }
 
-std::vector<SpriteFrame>& SpriteFrameData::getFrames() {
+std::vector<SpriteFrame>& SpriteFrameData::getFrames() & {
     return m_impl->frames;
+}
+
+std::vector<SpriteFrame> SpriteFrameData::getFrames() && {
+    return std::move(m_impl->frames);
 }
 
 const SpriteFrameMetadata& SpriteFrameData::getMetadata() const {
@@ -211,13 +215,13 @@ bool parseSpriteFrame(pugi::xml_node node, SpriteFrame& sframe, int format) {
     }
 }
 
-Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, bool passBufferOwnership) {
+Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, const ParseSpriteFramesOptions& options) {
     auto sfdata = std::make_unique<SpriteFrameData::Impl>();
 
     pugi::xml_parse_result result;
     pugi::xml_document doc;
 
-    if (passBufferOwnership) {
+    if (options.passBufferOwnership) {
         result = doc.load_buffer_inplace_own(data, size);
     } else {
         result = doc.load_buffer_inplace(data, size);
@@ -300,20 +304,22 @@ Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, bool passBuff
 
     // Iterate over the frames
     for (pugi::xml_node keyNode = frames.child("key"); keyNode; keyNode = keyNode.next_sibling("key")) {
-        auto frameKey = keyNode.child_value();
-
-        // the corresponding value node
-        auto frameDict = keyNode.next_sibling();
-
-        if (!frameDict) {
+        std::string name = keyNode.child_value();
+        if (options.ignoreFrames.contains(name)) {
             continue;
         }
 
         SpriteFrame frame;
-        frame.name = frameKey;
+        frame.name = std::move(name);
+
+        // the corresponding value node
+        auto frameDict = keyNode.next_sibling();
+        if (!frameDict) {
+            continue;
+        }
 
         if (!parseSpriteFrame(frameDict, frame, sfdata->metadata.format)) {
-            log::warn("Failed to parse frame '{}', skipping!", frameKey);
+            log::warn("Failed to parse frame '{}', skipping!", frame.name);
             continue;
         }
 

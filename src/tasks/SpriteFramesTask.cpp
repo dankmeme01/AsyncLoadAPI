@@ -5,7 +5,9 @@ using namespace geode::prelude;
 
 namespace AsyncLoad {
 
-SpriteFramesTask::SpriteFramesTask(SpriteFramesLoadParams&& params, std::shared_ptr<Control> ctl) : TypedTask(std::move(ctl)) {
+SpriteFramesTask::SpriteFramesTask(SpriteFramesLoadParams&& params, std::shared_ptr<Control> ctl) : CrtpTask(std::move(ctl)) {
+    m_ignoreFrames = std::move(params.ignoreFrames);
+
     if (!params.data.empty()) {
         // user provided raw plist data, no need to read any files
         m_state = State::PlistRead;
@@ -34,7 +36,9 @@ TaskAdvanceResult SpriteFramesTask::advance(bool mainThread) {
         } break;
 
         case State::PlistRead: {
-            auto result = parseSpriteFrames(m_data.data(), m_data.size(), false);
+            auto result = parseSpriteFrames(m_data.data(), m_data.size(), {
+                .ignoreFrames = std::move(m_ignoreFrames)
+            });
             if (!result) {
                 this->fail(fmt::format("Failed to parse sprite frames (path: {}): {}", m_path, result.unwrapErr()));
                 return TaskAdvanceResult::Finished;

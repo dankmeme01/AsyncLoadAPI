@@ -17,6 +17,9 @@ namespace detail {
     struct TaskControlBase;
 }
 
+template <typename T>
+struct TypedTask;
+
 class AL_DLL TaskHandle {
 public:
     /// Constructs an empty task handle, representing no task.
@@ -82,7 +85,11 @@ public:
 private:
     friend class ALManager;
     friend class TaskGroup;
+    friend struct Task;
     friend struct std::hash<TaskHandle>;
+
+    template <typename T>
+    friend struct TypedTask;
 
     std::shared_ptr<detail::TaskControlBase> m_ctl;
 
