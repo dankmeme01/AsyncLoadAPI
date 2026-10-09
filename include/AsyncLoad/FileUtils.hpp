@@ -84,6 +84,42 @@ AL_DLL TextureQuality getTextureQuality();
 /// Returns quality suffix for the given quality, e.g. "-hd", "-uhd" or ""
 AL_DLL std::string_view getQualitySuffix(TextureQuality quality);
 
+struct FileUtilsProvider {
+    using ExistsFn = bool(*)(geode::ZStringView);
+    using ClearCacheFn = void(*)();
+    using GetFileDataFn = geode::Result<CachedBufferChunk>(*)(geode::ZStringView);
+    using GetFileDataOwnedFn = geode::Result<OwnedBuffer>(*)(geode::ZStringView);
+    using GetMappedFileFn = geode::Result<FileMappedBuffer>(*)(geode::ZStringView);
+
+    size_t _size = sizeof(FileUtilsProvider);
+
+    /// Function to call to check if a file exists by the given full path
+    ExistsFn exists;
+    /// Function for additional cleanup, by default does nothing. Called when file utils are purged.
+    ClearCacheFn clearCache;
+    /// Function called to get file data by the given full path
+    GetFileDataFn getFileData;
+    /// Function called to get file data by the given full path
+    GetFileDataOwnedFn getFileDataOwned;
+    /// Function called to get file data by the given full path, using memory mapped io
+    GetMappedFileFn getMappedFile;
+};
+
+/// Sets the provider that controls different file related operations.
+/// Every pointer that is null in this table means default AsyncLoad operations will be used.
+/// The provided table does not need to exist past this call, but function pointers must remain valid.
+///
+/// Calling this function causes a small memory leak every time, for the previous provider. Avoid calling it many times.
+/// If for whatever reason you must call the original functions, see the `AsyncLoad::impl` namespace.
+AL_DLL void setFileUtilsProvider(FileUtilsProvider* provider);
+
+namespace impl {
+    bool fileExists(geode::ZStringView path);
+    geode::Result<CachedBufferChunk> getFileData(geode::ZStringView path);
+    geode::Result<OwnedBuffer> getFileDataOwned(geode::ZStringView path);
+    geode::Result<FileMappedBuffer> getMappedFile(geode::ZStringView path);
+}
+
 AL_DLL size_t getFPFFCacheHits();
 AL_DLL size_t getFPFFCacheMisses();
 AL_DLL size_t getFPFFCalls();

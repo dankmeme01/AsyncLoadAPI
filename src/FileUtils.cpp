@@ -5,6 +5,25 @@
 
 using namespace geode::prelude;
 
+namespace AsyncLoad {
+
+namespace impl {
+    bool fileExists(ZStringView path);
+    Result<CachedBufferChunk> getFileData(ZStringView path);
+    Result<OwnedBuffer> getFileDataOwned(ZStringView path);
+    Result<FileMappedBuffer> getMappedFile(ZStringView path);
+}
+
+static FileUtilsProvider* defaultProvider() {
+    auto p = new FileUtilsProvider();
+    p->exists = &impl::fileExists;
+    p->clearCache = [] {};
+    p->getFileData = &impl::getFileData;
+    p->getFileDataOwned = &impl::getFileDataOwned;
+    p->getMappedFile = &impl::getMappedFile;
+    return p;
+}
+
 static asp::Mutex<std::unordered_map<uint64_t, gd::string>> g_cache;
 // TODO: libc++ does not implement std::atomic<std::shared_ptr> in 2026, so use a spinlock.
 // track: https://github.com/llvm/llvm-project/issues/99980
@@ -13,8 +32,34 @@ static std::atomic<bool> g_texturePacks{false};
 static std::atomic<size_t> g_cacheHits = 0;
 static std::atomic<size_t> g_cacheMisses = 0;
 static std::atomic<size_t> g_fpffCalls = 0;
+static std::atomic<FileUtilsProvider*> g_provider{defaultProvider()};
 
-namespace AsyncLoad {
+static FileUtilsProvider* provider() {
+    return g_provider.load(std::memory_order::acquire);
+}
+
+void setFileUtilsProvider(FileUtilsProvider* provider) {
+    auto newp = defaultProvider();
+
+    auto copy = [&](auto... members) {
+        (([&] {
+            if (auto fn = provider->*members) {
+                newp->*members = fn;
+            }
+        }()), ...);
+    };
+
+    copy(
+        &FileUtilsProvider::exists,
+        &FileUtilsProvider::clearCache,
+        &FileUtilsProvider::getFileData,
+        &FileUtilsProvider::getFileDataOwned,
+        &FileUtilsProvider::getMappedFile
+    );
+
+    // ignore previous value, there is no feasible way to safely free it without locks
+    g_provider.store(provider, std::memory_order::release);
+}
 
 /// See platform/shared_apple/FileUtils.hpp
 #if defined(__APPLE__)
@@ -30,15 +75,13 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
     $override
     void purgeCachedEntries() {
         CCFileUtils::purgeCachedEntries();
-        auto guard = g_cache.lock();
-        guard->clear();
+        doCleanup();
     }
 
     $override
     static void purgeFileUtils() {
         CCFileUtils::purgeFileUtils();
-        auto guard = g_cache.lock();
-        guard->clear();
+        doCleanup(true);
     }
 
     // Many of those methods may call each other, avoid cloning unnecessary by using a raii variable
@@ -100,10 +143,23 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
         *g_searchPaths.lock() = std::move(vec);
         g_texturePacks.store(this->getTexturePackCount() > 0, std::memory_order::relaxed);
     }
+
+    static void doCleanup(bool searchPaths = false) {
+        g_cache.lock()->clear();
+        if (searchPaths) {
+            *g_searchPaths.lock() = std::make_shared<std::vector<std::string>>();
+        }
+
+        provider()->clearCache();
+    }
 };
 
 void refreshSearchPaths() {
     HookedFileUtils::get().cloneSearchPaths();
+}
+
+bool fileExists(geode::ZStringView path) {
+    return provider()->exists(path);
 }
 
 gd::string getPathForFilename(std::string_view filename, std::string_view searchPath) {
@@ -289,11 +345,6 @@ gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<s
     return ret;
 }
 
-// forward decl for the implementation
-Result<CachedBufferChunk> getFileDataImpl(ZStringView path);
-Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path);
-Result<FileMappedBuffer> getMappedFileImpl(ZStringView path);
-
 Result<CachedBufferChunk> getFileData(
     ZStringView path,
     bool assumeFullPath
@@ -302,12 +353,13 @@ Result<CachedBufferChunk> getFileData(
         return Err("Empty path passed to getFileData");
     }
 
+    auto prov = provider();
     if (assumeFullPath) {
-        return getFileDataImpl(path);
+        return prov->getFileData(path);
     }
 
     auto p = fullPathForFilename(path);
-    return getFileDataImpl(p);
+    return prov->getFileData(p);
 }
 
 Result<OwnedBuffer> getFileDataOwned(
@@ -318,12 +370,13 @@ Result<OwnedBuffer> getFileDataOwned(
         return Err("Empty path passed to getFileDataOwned");
     }
 
+    auto prov = provider();
     if (assumeFullPath) {
-        return getFileDataOwnedImpl(path);
+        return prov->getFileDataOwned(path);
     }
 
     auto p = fullPathForFilename(path);
-    return getFileDataOwnedImpl(p);
+    return prov->getFileDataOwned(p);
 }
 
 Result<FileMappedBuffer> getMappedFile(
@@ -334,12 +387,13 @@ Result<FileMappedBuffer> getMappedFile(
         return Err("Empty path passed to getMappedFile");
     }
 
+    auto prov = provider();
     if (assumeFullPath) {
-        return getMappedFileImpl(path);
+        return prov->getMappedFile(path);
     }
 
     auto p = fullPathForFilename(path);
-    return getMappedFileImpl(p);
+    return prov->getMappedFile(p);
 }
 
 std::shared_ptr<std::vector<std::string>> getSearchPaths() {

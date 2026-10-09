@@ -5,11 +5,6 @@ using namespace geode::prelude;
 
 namespace AsyncLoad {
 
-bool fileExists(ZStringView path) {
-    auto attrs = GetFileAttributesA(path.c_str());
-    return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
-}
-
 static Result<std::pair<HANDLE, LARGE_INTEGER>> doOpen(ZStringView path) {
     HANDLE file = CreateFileA(
         path.c_str(),
@@ -33,7 +28,12 @@ static Result<std::pair<HANDLE, LARGE_INTEGER>> doOpen(ZStringView path) {
     return Ok(std::make_pair(file, filesize));
 }
 
-Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
+bool impl::fileExists(ZStringView path) {
+    auto attrs = GetFileAttributesA(path.c_str());
+    return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+Result<CachedBufferChunk> impl::getFileData(ZStringView path) {
     auto [file, filesize] = GEODE_UNWRAP(doOpen(path));
 
     auto buffer = BufferCache::get().getSized(filesize.QuadPart);
@@ -47,7 +47,7 @@ Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
     return Ok(std::move(buffer));
 }
 
-Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
+Result<OwnedBuffer> impl::getFileDataOwned(ZStringView path) {
     auto [file, filesize] = GEODE_UNWRAP(doOpen(path));
 
     auto buffer = std::make_unique_for_overwrite<uint8_t[]>(filesize.QuadPart);
@@ -64,7 +64,7 @@ Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
     });
 }
 
-Result<FileMappedBuffer> getMappedFileImpl(ZStringView path) {
+Result<FileMappedBuffer> impl::getMappedFile(ZStringView path) {
     HANDLE file = CreateFileA(
         path.c_str(),
         GENERIC_READ,
