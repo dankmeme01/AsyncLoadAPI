@@ -2,6 +2,7 @@
 #include <AsyncLoad/util/Setting.hpp>
 #include <AsyncLoad/util/String.hpp>
 #include <AsyncLoad/FileUtils.hpp>
+#include <gtl/phmap.hpp>
 
 using namespace geode::prelude;
 
@@ -403,7 +404,7 @@ void SpritesheetTask::addAndComplete() {
     addSpriteFrames(state.m_spriteFrames, state.m_texture, plistKey);
 
     // for other frames we need to group by texture
-    std::unordered_map<CCTexture2D*, std::vector<SpriteFrame>> framesByTexture;
+    gtl::flat_hash_map<CCTexture2D*, std::vector<SpriteFrame>> framesByTexture;
 
     for (auto& unl : state.m_pendingUnloadedMergeFrames) {
         auto& load = state.m_pendingTextureLoads[unl.textureIdx];

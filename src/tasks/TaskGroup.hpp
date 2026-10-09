@@ -3,13 +3,14 @@
 #include <AsyncLoad/TaskGroup.hpp>
 #include "TaskImpl.hpp"
 #include <ManagerImpl.hpp>
+#include <gtl/phmap.hpp>
 
 using namespace geode::prelude;
 
 namespace AsyncLoad {
 
 struct detail::GroupControl {
-    std::unordered_set<TaskHandle> m_tasks;
+    gtl::flat_hash_set<TaskHandle> m_tasks;
     std::atomic<bool> m_closed{false};
     std::atomic<bool> m_eagerDelivery{false};
     std::atomic<TaskGroupFailBehavior> m_failBehavior{TaskGroupFailBehavior::Late};
