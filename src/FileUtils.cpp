@@ -58,7 +58,7 @@ void setFileUtilsProvider(FileUtilsProvider* provider) {
     );
 
     // ignore previous value, there is no feasible way to safely free it without locks
-    g_provider.store(provider, std::memory_order::release);
+    g_provider.store(newp, std::memory_order::release);
 }
 
 /// See platform/shared_apple/FileUtils.hpp

@@ -94,15 +94,15 @@ struct FileUtilsProvider {
     size_t _size = sizeof(FileUtilsProvider);
 
     /// Function to call to check if a file exists by the given full path
-    ExistsFn exists;
+    ExistsFn exists{};
     /// Function for additional cleanup, by default does nothing. Called when file utils are purged.
-    ClearCacheFn clearCache;
+    ClearCacheFn clearCache{};
     /// Function called to get file data by the given full path
-    GetFileDataFn getFileData;
+    GetFileDataFn getFileData{};
     /// Function called to get file data by the given full path
-    GetFileDataOwnedFn getFileDataOwned;
+    GetFileDataOwnedFn getFileDataOwned{};
     /// Function called to get file data by the given full path, using memory mapped io
-    GetMappedFileFn getMappedFile;
+    GetMappedFileFn getMappedFile{};
 };
 
 /// Sets the provider that controls different file related operations.
