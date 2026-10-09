@@ -29,6 +29,8 @@ def main(build: Build):
     if not config.platform.is_apple():
         build.add_cpm_dep("zeux/pugixml", "v1.15", link_name="pugixml-static", options={"PUGIXML_NO_EXCEPTIONS": "ON"})
 
+    build.add_cpm_dep("greg7mdp/gtl", "v1.2.0", link_name="gtl", options={})
+
     # link to opengl stuff & AAssetManager
     if config.platform.is_android():
         build.link_libraries("EGL", "GLESv2", "android")

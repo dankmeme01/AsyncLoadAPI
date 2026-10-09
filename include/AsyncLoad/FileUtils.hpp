@@ -75,6 +75,10 @@ AL_DLL bool anyTexturePacksLoaded();
 /// it is only thread safe if you can ensure no one writes to the search paths at the same time (main thread is usually safe).
 AL_DLL void refreshSearchPaths();
 
+/// Clears the file utils cache: this includes the path cache and custom provider caches.
+/// This does not clear cached search paths unless `paths` is passed as `true`, in that case the function is not thread safe.
+AL_DLL void clearFileUtilsCache(bool paths = false);
+
 enum class TextureQuality : uint8_t {
     Low, Medium, High
 };

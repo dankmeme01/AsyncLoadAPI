@@ -2,6 +2,7 @@
 #include <Geode/utils/StringBuffer.hpp>
 #include <Geode/modify/CCFileUtils.hpp>
 #include <memory>
+#include <gtl/phmap.hpp>
 
 using namespace geode::prelude;
 
@@ -24,7 +25,7 @@ static FileUtilsProvider* defaultProvider() {
     return p;
 }
 
-static asp::Mutex<std::unordered_map<uint64_t, gd::string>> g_cache;
+static asp::Mutex<gtl::flat_hash_map<uint64_t, gd::string>> g_cache;
 // TODO: libc++ does not implement std::atomic<std::shared_ptr> in 2026, so use a spinlock.
 // track: https://github.com/llvm/llvm-project/issues/99980
 static asp::SpinLock<std::shared_ptr<std::vector<std::string>>> g_searchPaths;
@@ -156,6 +157,14 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
 
 void refreshSearchPaths() {
     HookedFileUtils::get().cloneSearchPaths();
+}
+
+void clearFileUtilsCache(bool paths) {
+    HookedFileUtils::doCleanup(false);
+
+    if (paths) {
+        refreshSearchPaths();
+    }
 }
 
 bool fileExists(geode::ZStringView path) {
