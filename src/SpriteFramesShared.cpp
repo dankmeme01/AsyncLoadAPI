@@ -50,7 +50,7 @@ void addSpriteFrames(const std::vector<SpriteFrame>& frames, cocos2d::CCTexture2
     }
 
     if (!key.empty()) {
-        sfcache->m_pLoadedFileNames->insert(gd::string{key.data(), key.size()});
+        sfcache->m_pLoadedFileNames->insert(std::string{key});
         // for good measure, insert full path too
         sfcache->m_pLoadedFileNames->insert(fullPathForFilename(key));
     }

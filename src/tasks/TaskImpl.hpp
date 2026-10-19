@@ -204,8 +204,7 @@ struct CrtpTask : TypedTask<T> {
     using TypedTask<T>::TypedTask;
 
     std::string_view typeName() const override {
-        auto [p, size] = arc::getTypename<Derived>();
-        return {p, size};
+        return arc::getTypename<Derived>();
     }
 };
 

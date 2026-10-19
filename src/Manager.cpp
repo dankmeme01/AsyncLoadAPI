@@ -45,7 +45,7 @@ TaskHandle ALManager::submitSpriteFramesLoad(SpriteFramesLoadParams&& params) {
 TaskHandle ALManager::loadTextureInner(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath, bool eager) {
     auto tc = CCTextureCache::get();
 
-    gd::string fp{path.data(), path.size()};
+    std::string fp{path};
     if (!fullPath) {
         fp = fullPathForFilename(path.view());
     }

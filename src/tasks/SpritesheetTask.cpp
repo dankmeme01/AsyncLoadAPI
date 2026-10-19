@@ -1,6 +1,5 @@
 #include "SpritesheetTask.hpp"
 #include <AsyncLoad/util/Setting.hpp>
-#include <AsyncLoad/util/String.hpp>
 #include <AsyncLoad/FileUtils.hpp>
 #include <gtl/phmap.hpp>
 
@@ -111,7 +110,7 @@ static void handleCandidatePlistResult(SpritesheetState& state, std::string_view
         // since we have the full png path (which is a cctexturecache key), we can check if the texture is cached right away,
         // because this function runs on main thread
         auto tc = CCTextureCache::get();
-        Ref pngTexture = (CCTexture2D*)tc->m_pTextures->objectForKey(string::convert(png));
+        Ref pngTexture = (CCTexture2D*)tc->m_pTextures->objectForKey(png);
 
         state.m_mergeCandidates.emplace_back(MergeCandidate {
             .index = index,
@@ -153,11 +152,10 @@ SpritesheetTask::SpritesheetTask(std::string_view name, SpritesheetMergeBehavior
 
     m_mergeSheets = shouldMerge(behavior);
 
-    auto plistPath = fmt::format("{}.plist", name);
 
     // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
     // without running fullPathForFilename. we will replicate this and also use it as a unique key.
-    auto plistKey = gd::string{plistPath};
+    auto plistKey = fmt::format("{}.plist", name);
     auto sfc = CCSpriteFrameCache::get();
     if (sfc->m_pLoadedFileNames->contains(plistKey)) {
         // already loaded!
@@ -299,7 +297,7 @@ void SpritesheetTask::startLoadingCandidates() {
                 break;
             }
 
-            candidates.emplace_back(string::convert(std::move(fp)));
+            candidates.emplace_back(std::move(fp));
             break;
         } while (tq >= (int)TextureQuality::Low);
     }
@@ -312,7 +310,7 @@ void SpritesheetTask::startLoadingCandidates() {
     auto& am = ALManager::get();
 
     m_spritesheetState->m_pendingTasks.fetch_add(candidates.size(), std::memory_order::relaxed);
-    for (auto& [idx, path] : asp::iter::from(candidates).enumerate()) {
+    for (auto [idx, path] : asp::iter::from(candidates).enumerate()) {
         am.submitSpriteFramesLoad({
             .path = path,
             .isFullPath = true,
@@ -367,7 +365,7 @@ bool SpritesheetTask::doMerge() {
     // we have to enqueue the pngs
     state.m_pendingTasks.fetch_add(state.m_pendingTextureLoads.size(), std::memory_order::relaxed);
     auto& am = ALManager::get();
-    for (auto& [idx, png] : asp::iter::from(state.m_pendingTextureLoads).enumerate()) {
+    for (auto [idx, png] : asp::iter::from(state.m_pendingTextureLoads).enumerate()) {
         am.submitTextureLoad({
             .path = png.path,
             .isFullPath = true,

@@ -16,11 +16,11 @@ AL_DLL bool fileExists(geode::ZStringView path);
 
 /// Rewrite of CCFileUtils::getPathForFilename, saner than cocos.
 /// This is a somewhat internal function, you likely want `fullPathForFilename` instead.
-AL_DLL gd::string getPathForFilename(std::string_view filename, std::string_view searchPath);
+AL_DLL std::string getPathForFilename(std::string_view filename, std::string_view searchPath);
 
 /// Rewrite of CCFileUtils::fullPathForFilename, much faster and completely thread-safe.
-AL_DLL gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix = false);
-AL_DLL gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<std::string_view> applySuffix);
+AL_DLL std::string fullPathForFilename(std::string_view input, bool ignoreSuffix = false);
+AL_DLL std::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<std::string_view> applySuffix);
 
 /// Rewrite of CCFileUtils::getFileData, fast and thread safe, and with good error reporting.
 AL_DLL geode::Result<CachedBufferChunk> getFileData(

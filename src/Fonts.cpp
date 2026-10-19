@@ -14,7 +14,7 @@ static Ref<CCBMFontConfiguration> convert(BitmapFont& font) {
     conf->m_nCommonHeight = font.getCommonHeight();
     auto atl = font.getAtlasName();
     conf->m_sAtlasName = {atl.begin(), atl.end()};
-    conf->m_pCharacterSet = new gd::set<unsigned int>();
+    conf->m_pCharacterSet = new std::set<unsigned int>();
 
     auto& chars = font.getCharDefs();
     for (auto& [c, def] : chars) {

@@ -99,7 +99,6 @@ Checks: |
   readability-uniqueptr-delete-release,
   readability-redundant-member-init,
 
-  # TODO (v6): these are good but require abi break or massive changes to fix rn
   -misc-header-include-cycle,
   -bugprone-unchecked-optional-access, ## this one maybe dont
   -bugprone-branch-clone, ## often harmless

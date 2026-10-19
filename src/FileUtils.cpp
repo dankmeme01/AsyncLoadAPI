@@ -25,7 +25,7 @@ static FileUtilsProvider* defaultProvider() {
     return p;
 }
 
-static asp::Mutex<gtl::flat_hash_map<uint64_t, gd::string>> g_cache;
+static asp::Mutex<gtl::flat_hash_map<uint64_t, std::string>> g_cache;
 // TODO: libc++ does not implement std::atomic<std::shared_ptr> in 2026, so use a spinlock.
 // track: https://github.com/llvm/llvm-project/issues/99980
 static asp::SpinLock<std::shared_ptr<std::vector<std::string>>> g_searchPaths;
@@ -101,7 +101,7 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
     };
 
     $override
-    void setSearchPaths(const gd::vector<gd::string>& searchPaths) {
+    void setSearchPaths(const std::vector<std::string>& searchPaths) {
         ClonePathsRaii _;
         CCFileUtils::setSearchPaths(searchPaths);
     }
@@ -171,7 +171,7 @@ bool fileExists(geode::ZStringView path) {
     return provider()->exists(path);
 }
 
-gd::string getPathForFilename(std::string_view filename, std::string_view searchPath) {
+std::string getPathForFilename(std::string_view filename, std::string_view searchPath) {
     // unused
     std::string_view resolutionDirectory;
 
@@ -191,9 +191,9 @@ gd::string getPathForFilename(std::string_view filename, std::string_view search
     buf.append(file);
 
     if (fileExists(buf.c_str())) {
-        return gd::string(buf.data(), buf.size());
+        return std::string(buf.data(), buf.size());
     }
-    return gd::string{};
+    return std::string{};
 #else
     // Apple quirks
     utils::StringBuffer<512> fileBuf;
@@ -238,11 +238,11 @@ std::string_view getQualitySuffix(TextureQuality quality) {
     }
 }
 
-static void cachePath(uint64_t hash, const gd::string& path) {
+static void cachePath(uint64_t hash, const std::string& path) {
     g_cache.lock()->emplace(hash, path);
 }
 
-static gd::string getCachedPath(uint64_t hash) {
+static std::string getCachedPath(uint64_t hash) {
     auto cache = g_cache.lock();
     auto it = cache->find(hash);
     if (it != cache->end()) {
@@ -251,14 +251,14 @@ static gd::string getCachedPath(uint64_t hash) {
     return {};
 }
 
-gd::string fullPathForFilename(std::string_view input, bool ignoreSuffix) {
+std::string fullPathForFilename(std::string_view input, bool ignoreSuffix) {
     return fullPathForFilenameWithSuffix(
         input,
         ignoreSuffix ? std::nullopt : std::optional{getQualitySuffix(getTextureQuality())}
     );
 }
 
-gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<std::string_view> applySuffix) {
+std::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<std::string_view> applySuffix) {
     g_fpffCalls.fetch_add(1, std::memory_order::relaxed);
 
     if (input.empty()) {
@@ -269,13 +269,13 @@ gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<s
     // we try to make this check as cheap as possible, so don't rely on std::filesystem or cocos
 #ifdef GEODE_IS_WINDOWS
     if (input.size() >= 3 && std::isalpha(input[0]) && input[1] == ':' && (input[2] == '/' || input[2] == '\\')) {
-        return gd::string{input};
+        return std::string{input};
     } else if (input.size() >= 2 && input[0] == '\\' && input[1] == '\\') {
-        return gd::string{input};
+        return std::string{input};
     }
 #else
     if (input.size() >= 1 && input[0] == '/') {
-        return gd::string{input.data(), input.size()};
+        return std::string{input};
     }
 #endif
 
@@ -338,7 +338,7 @@ gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<s
         }
     }
 
-    gd::string ret;
+    std::string ret;
     if (applySuffix == "-uhd") {
         // try to downgrade and see if there's an -hd texture
         ret = fullPathForFilenameWithSuffix(input, "-hd");
@@ -347,7 +347,7 @@ gd::string fullPathForFilenameWithSuffix(std::string_view input, std::optional<s
         ret = fullPathForFilenameWithSuffix(input, std::nullopt);
     } else {
         // if all else fails, accept defeat
-        ret = gd::string{filename.data(), filename.size()};
+        ret = std::string{filename};
     }
 
     cachePath(hash, ret);
