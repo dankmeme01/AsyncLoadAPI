@@ -8,7 +8,7 @@ namespace AsyncLoad {
 
 struct SpritesheetState;
 
-struct SpritesheetTask final : CrtpTask<SpritesheetTask, void> {
+struct SpritesheetTask final : CrtpTask<SpritesheetTask, LoadedSpritesheet> {
     enum class State : uint8_t {
         /// Nothing done yet
         Start,

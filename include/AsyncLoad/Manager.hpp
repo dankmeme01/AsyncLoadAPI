@@ -80,6 +80,23 @@ enum class SpritesheetMergeBehavior {
     Never,
 };
 
+struct LoadedSpritesheet {
+    /// If this is true, no loading was done because the spritesheet is already considered loaded in sprite frame cache.
+    /// Other members will be null or empty.
+    bool skipped = false;
+
+    /// This will be the canonical texture that's used when loading this spritesheet, and is always set unless loading was skipped.
+    /// When merge policy is Never, or merging otherwise did not occur (no texture packs or no merge candidates),
+    /// this will be the actual texture used for all frames from this spritesheet.
+    geode::Ref<cocos2d::CCTexture2D> texture;
+
+    /// These are the candidate textures that were also loaded during the process of spritesheet merging.
+    /// There are two possible states for this vector:
+    /// 1. Empty: if merging did not happen or there were no candidates to merge
+    /// 2. >= 2 elements: if merging happened, the canonical texture (`texture` field) is put as first element, and other candidates go after.
+    std::vector<geode::Ref<cocos2d::CCTexture2D>> candidateTextures;
+};
+
 class AL_DLL ALManager final {
 public:
     struct Impl;
@@ -110,13 +127,15 @@ public:
     /// and the returned handle will be empty.
     TaskHandle loadTextureEager(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath = false);
 
+    using LoadSpritesheetCallback = geode::Function<void(geode::Result<LoadedSpritesheet>)>;
+
     /// Loads a spritesheet file by the given name, invokes callback on main thread when done or errored.
     /// This loads the appropriate .png and .plist files in parallel and uses caches to avoid excessive loading.
     /// You must pass the name without any extension to this function, e.g. `GJ_GameSheet_01`.
     /// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
     TaskHandle loadSpritesheet(
         std::string_view name,
-        geode::Function<void(geode::Result<>)> callback,
+        LoadSpritesheetCallback callback,
         SpritesheetMergeBehavior mergeBehavior = SpritesheetMergeBehavior::Default
     );
 

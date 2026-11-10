@@ -16,12 +16,17 @@ def main(build: Build):
     build.add_source_dir(f"src/platform/{config.platform.platform_str(False)}/")
 
     build.enable_mod_json_generation("mod.template.json")
+    assert build.mod_json
+
     build.add_geode_dep("prevter.imageplus", {
         "version": ">=v1.1.0",
         "required": False,
     })
     build.relax_geode_requirement()
     build.add_api_headers("include/**/*.hpp")
+    build.mod_json["api"]["cmake"] = [
+        "cmake/DependencyMain.cmake"
+    ]
 
     if config.platform.is_apple():
         build.add_source_dir("src/platform/shared_apple")

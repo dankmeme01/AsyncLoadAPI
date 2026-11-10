@@ -152,7 +152,6 @@ SpritesheetTask::SpritesheetTask(std::string_view name, SpritesheetMergeBehavior
 
     m_mergeSheets = shouldMerge(behavior);
 
-
     // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
     // without running fullPathForFilename. we will replicate this and also use it as a unique key.
     auto plistKey = fmt::format("{}.plist", name);
@@ -160,7 +159,9 @@ SpritesheetTask::SpritesheetTask(std::string_view name, SpritesheetMergeBehavior
     if (sfc->m_pLoadedFileNames->contains(plistKey)) {
         // already loaded!
         m_state = State::Finished;
-        this->complete(Ok());
+        this->complete(Ok(LoadedSpritesheet {
+            .skipped = true
+        }));
         return;
     }
 
@@ -397,6 +398,9 @@ void SpritesheetTask::addAndComplete() {
     }
 #endif
 
+    LoadedSpritesheet result{};
+    result.texture = state.m_texture;
+
     // base frames are simple
     auto plistKey = fmt::format("{}.plist", state.m_name);
     addSpriteFrames(state.m_spriteFrames, state.m_texture, plistKey);
@@ -422,10 +426,18 @@ void SpritesheetTask::addAndComplete() {
     for (auto& [tex, frames] : framesByTexture) {
         AL_TRACE("For texture {} adding {} frames", tex, frames.size());
         addSpriteFrames(frames, tex, "");
+
+        // append that texture
+        result.candidateTextures.emplace_back(tex);
+    }
+
+    // if any candidate textures were actually used, prepend the canonical texture to the list
+    if (!result.candidateTextures.empty()) {
+        result.candidateTextures.insert(result.candidateTextures.begin(), state.m_texture);
     }
 
     m_state = State::Finished;
-    this->complete(Ok());
+    this->complete(Ok(std::move(result)));
 }
 
 void SpritesheetTask::fail(std::string message) {

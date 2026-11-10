@@ -89,7 +89,7 @@ TaskHandle ALManager::loadTextureEager(ZStringView path, TextureLoadParams::Call
     return loadTextureInner(path, std::move(callback), fullPath, true);
 }
 
-TaskHandle ALManager::loadSpritesheet(std::string_view name, Function<void(Result<>)> callback, SpritesheetMergeBehavior mergeBehavior) {
+TaskHandle ALManager::loadSpritesheet(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior) {
     return m_impl->createAndSubmitTask<SpritesheetTask>(std::move(callback), name, mergeBehavior);
 }
 
