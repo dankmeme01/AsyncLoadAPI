@@ -148,6 +148,20 @@ void ALManager::enqueueSuspendedTask(TaskHandle handle, bool mainThread) {
     m_impl->resumeTask(handle.id(), mainThread);
 }
 
+Result<> loadTexture(
+    ZStringView path,
+    TextureLoadParams::Callback callback,
+    bool fullPath
+) {
+    ALManager::get().loadTexture(path, std::move(callback), fullPath);
+    return Ok();
+}
+
+Result<> preload(ZStringView path) {
+    ALManager::get().loadTexture(path, [](auto) {});
+    return Ok();
+}
+
 }
 
 $on_game(TexturesUnloaded) {

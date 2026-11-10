@@ -3,19 +3,23 @@
 #include "util/BufferCache.hpp"
 #include "util/config.hpp"
 
+#include "util/EventDefine.hpp"
+
 namespace AsyncLoad {
 
-AL_DLL void premultiplyAlpha(
+AL_EVENT_EXPORT(void, premultiplyAlpha, (
     void* AL_RESTRICT destination,
     const void* AL_RESTRICT source,
     size_t byteCount
-);
-AL_DLL void premultiplyAlphaInplace(void* buffer, size_t byteCount);
-AL_DLL void widenRGBtoRGBA(
+), (destination, source, byteCount));
+
+AL_EVENT_EXPORT(void, premultiplyAlphaInplace, (void* buffer, size_t byteCount), (buffer, byteCount));
+
+AL_EVENT_EXPORT(void, widenRGBtoRGBA, (
     void* AL_RESTRICT destination,
     const void* AL_RESTRICT source,
     size_t pixelCount
-);
+), (destination, source, pixelCount));
 
 struct AL_DLL RawImage {
     /// Raw byte vector containing the image pixels.
@@ -34,14 +38,14 @@ struct AL_DLL RawImage {
     /// If the image has an alpha channel and has not been premultiplied, this will premultiply the alpha into the RGB channels.
     /// Otherwise, if this is an RGB image, this converts the image into RGBA with an alpha channel of 255 for all pixels.
     /// Does nothing when the image has an alpha channel and is already premultiplied.
-    void premultiply();
+    AL_EVENT_EXPORT_MEMBER(RawImage, void, premultiply, (), (this));
 
     /// Decodes an image in a format like PNG, WEBP, etc.
     /// Only PNG is guaranteed to be supported by default.
     /// If the ImagePlus mod is available, more formats are automatically available, and the decoding is more efficient overall.
-    static geode::Result<RawImage> create(std::span<const uint8_t> data);
+    AL_EVENT_EXPORT_MEMBER_STATIC(geode::Result<RawImage>, create, (std::span<const uint8_t> data), (data));
     /// Converts a CCImage into a RawImage, which will copy all the data.
-    static geode::Result<RawImage> create(cocos2d::CCImage* image, bool takeOwneship = false);
+    AL_EVENT_EXPORT_MEMBER_STATIC(geode::Result<RawImage>, create, (cocos2d::CCImage* image, bool takeOwnership = false), (image, takeOwnership));
 };
 
 }

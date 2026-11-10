@@ -36,6 +36,9 @@ def main(build: Build):
 
     build.add_cpm_dep("greg7mdp/gtl", "v1.2.0", link_name="gtl", options={})
 
+
+    build.add_definition("GEODE_DEFINE_EVENT_EXPORTS")
+
     # link to opengl stuff & AAssetManager
     if config.platform.is_android():
         build.link_libraries("EGL", "GLESv2", "android")

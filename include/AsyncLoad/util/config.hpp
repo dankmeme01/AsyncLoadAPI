@@ -30,3 +30,8 @@
 # define AL_TRACE(...) do {} while (0)
 # define AL_TRACE_NOISY(...) do {} while (0)
 #endif
+
+// Macro for things that are unavailable in the Event API
+#if defined ASYNCLOAD_LINKING || defined AsyncLoad_EXPORTS
+# define AL_CAN_LINK
+#endif

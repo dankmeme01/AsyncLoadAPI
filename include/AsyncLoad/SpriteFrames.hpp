@@ -11,6 +11,8 @@
 #include <asp/iter.hpp>
 #include "util/config.hpp"
 
+#ifdef AL_CAN_LINK
+
 namespace AsyncLoad {
 
 struct AL_DLL SpriteFrame {
@@ -34,6 +36,7 @@ struct AL_DLL SpriteFrameData {
     SpriteFrameData& operator=(const SpriteFrameData&) = delete;
     SpriteFrameData(SpriteFrameData&&) noexcept;
     SpriteFrameData& operator=(SpriteFrameData&&) noexcept;
+
     ~SpriteFrameData();
 
     const std::vector<SpriteFrame>& getFrames() const;
@@ -65,3 +68,5 @@ AL_DLL void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D*
 AL_DLL void addSpriteFrames(const std::vector<SpriteFrame>& frames, cocos2d::CCTexture2D* texture, std::string_view key);
 
 }
+
+#endif
