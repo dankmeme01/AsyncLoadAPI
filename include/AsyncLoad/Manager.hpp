@@ -36,7 +36,7 @@ struct AL_DLL TextureLoadParams {
     /// The path to the image file to load asynchronously.
     /// If 'isFullPath' is 'true' (by default is 'false'), the path is assumed to be a full path.
     /// This will chain the image load operation followed by the texture load.
-    geode::ZStringView path;
+    std::string_view path;
     bool isFullPath = false;
 
     /// The CCImage to use for the texture. If not null, then this is used over the path.
@@ -57,7 +57,7 @@ struct AL_DLL SpriteFramesLoadParams {
 
     /// The path to the plist file to load asynchronously.
     /// If 'isFullPath' is 'true' (by default is 'false'), the path is assumed to be a full path.
-    geode::ZStringView path;
+    std::string_view path;
     bool isFullPath = false;
 
     /// The raw data of the plist file.
@@ -124,11 +124,11 @@ public:
     /// NOTE: if the texture exists in cache, this will never invoke the callback immediately.
     /// There is a guarantee that the callback will be invoked to run as soon as possible (usually next frame, on main thread),
     /// and if that is not enough, you can use `loadTextureEager`.
-    TaskHandle loadTexture(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath = false);
+    TaskHandle loadTexture(std::string_view path, TextureLoadParams::Callback callback, bool fullPath = false);
 
     /// Like `loadTexture`, but if the texture is already in cache, the callback will be invoked immediately,
     /// and the returned handle will be empty.
-    TaskHandle loadTextureEager(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath = false);
+    TaskHandle loadTextureEager(std::string_view path, TextureLoadParams::Callback callback, bool fullPath = false);
 
     using LoadSpritesheetCallback = geode::Function<void(geode::Result<LoadedSpritesheet>)>;
 
@@ -173,7 +173,7 @@ private:
 
     ALManager();
 
-    TaskHandle loadTextureInner(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath, bool eager);
+    TaskHandle loadTextureInner(std::string_view path, TextureLoadParams::Callback callback, bool fullPath, bool eager);
 };
 
 #endif
@@ -184,7 +184,7 @@ private:
 /// If the texture is already cached, immediately invokes the callback with the texture. If the mod is not loaded, returns an error.
 /// Pass `fullPath = true` if the path is already a full path and you want to avoid search path resolution.
 AL_EVENT_EXPORT(geode::Result<>, loadTexture, (
-    geode::ZStringView path,
+    std::string_view path,
     TextureLoadParams::Callback callback,
     bool fullPath
 ), (path, std::move(callback), fullPath));
@@ -196,7 +196,11 @@ AL_EVENT_EXPORT(geode::Result<>, loadTexture, (
 ///
 /// This function is a very high level, one-shot API for mods that want to preload certain resources
 /// on game launch, to avoid lagspikes when using `CCSprite::create` some time later.
-AL_EVENT_EXPORT(geode::Result<>, preload, (geode::ZStringView path), (path));
+AL_EVENT_EXPORT(geode::Result<>, preload, (std::string_view path), (path));
 
+/// Gets a CCTexture2D from the texture cache by the given path.
+/// The path may or may not end with the `.png` extension.
+/// The path does not need to be a full path, it will be resolved using fullPathForFilename.
+AL_EVENT_EXPORT(geode::Ref<cocos2d::CCTexture2D>, getTexture, (std::string_view path), (path));
 
 }

@@ -42,12 +42,12 @@ TaskHandle ALManager::submitSpriteFramesLoad(SpriteFramesLoadParams&& params) {
     return m_impl->createAndSubmitTask<SpriteFramesTask>(std::move(cb), std::move(params));
 }
 
-TaskHandle ALManager::loadTextureInner(geode::ZStringView path, TextureLoadParams::Callback callback, bool fullPath, bool eager) {
+TaskHandle ALManager::loadTextureInner(std::string_view path, TextureLoadParams::Callback callback, bool fullPath, bool eager) {
     auto tc = CCTextureCache::get();
 
     std::string fp{path};
     if (!fullPath) {
-        fp = fullPathForFilename(path.view());
+        fp = fullPathForFilename(path);
     }
 
     auto cachedTex = static_cast<CCTexture2D*>(tc->m_pTextures->objectForKey(fp));
@@ -81,11 +81,11 @@ TaskHandle ALManager::loadTextureInner(geode::ZStringView path, TextureLoadParam
     });
 }
 
-TaskHandle ALManager::loadTexture(ZStringView path, TextureLoadParams::Callback callback, bool fullPath) {
+TaskHandle ALManager::loadTexture(std::string_view path, TextureLoadParams::Callback callback, bool fullPath) {
     return loadTextureInner(path, std::move(callback), fullPath, false);
 }
 
-TaskHandle ALManager::loadTextureEager(ZStringView path, TextureLoadParams::Callback callback, bool fullPath) {
+TaskHandle ALManager::loadTextureEager(std::string_view path, TextureLoadParams::Callback callback, bool fullPath) {
     return loadTextureInner(path, std::move(callback), fullPath, true);
 }
 
@@ -149,7 +149,7 @@ void ALManager::enqueueSuspendedTask(TaskHandle handle, bool mainThread) {
 }
 
 Result<> loadTexture(
-    ZStringView path,
+    std::string_view path,
     TextureLoadParams::Callback callback,
     bool fullPath
 ) {
@@ -157,9 +157,19 @@ Result<> loadTexture(
     return Ok();
 }
 
-Result<> preload(ZStringView path) {
+Result<> preload(std::string_view path) {
     ALManager::get().loadTexture(path, [](auto) {});
     return Ok();
+}
+
+Ref<CCTexture2D> getTexture(std::string_view path) {
+    std::string p{path};
+    if (!p.ends_with(".png")) {
+        p += ".png";
+    }
+
+    auto fullPath = fullPathForFilename(p);
+    return (CCTexture2D*)CCTextureCache::get()->m_pTextures->objectForKey(fullPath);
 }
 
 }

@@ -1,5 +1,11 @@
 #include "config.hpp"
-#include <Geode/loader/Dispatch.hpp>
+
+#ifdef AsyncLoad_EXPORTS
+# define GEODE_DEFINE_EVENT_EXPORTS
+#else
+# undef GEODE_DEFINE_EVENT_EXPORTS
+#endif
+#include <Geode/loader/EventExport.hpp>
 
 #undef MY_MOD_ID
 #define MY_MOD_ID "dankmeme.async-load-api"
