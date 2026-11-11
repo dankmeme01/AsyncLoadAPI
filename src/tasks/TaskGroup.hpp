@@ -15,6 +15,7 @@ struct detail::GroupControl {
     std::atomic<bool> m_eagerDelivery{false};
     std::atomic<TaskGroupFailBehavior> m_failBehavior{TaskGroupFailBehavior::Late};
     std::atomic<GroupStatus> m_status{GroupStatus::Open};
+    std::atomic<uint32_t> m_pendingTasks{0};
     Function<void(TaskGroupResult)> m_callback;
 
     void updateState();

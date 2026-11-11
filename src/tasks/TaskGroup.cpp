@@ -12,18 +12,19 @@ void detail::GroupControl::updateState() {
 
     // we do not care if we are already in a terminal state
     if (curStatus != GroupStatus::Pending) {
+        m_pendingTasks.store(0, std::memory_order::release);
         return;
     }
 
     auto behavior = m_failBehavior.load(std::memory_order::acquire);
 
-    bool anyPending = false;
+    size_t pending = 0;
     bool anyErrored = false;
 
     for (auto& task : m_tasks) {
         switch (task.status()) {
             case TaskStatus::Pending: {
-                anyPending = true;
+                pending++;
             } break;
             case TaskStatus::Failed: {
                 anyErrored = true;
@@ -33,6 +34,7 @@ void detail::GroupControl::updateState() {
             } break;
         }
     }
+    m_pendingTasks.store(pending, std::memory_order::release);
 
     TaskGroupResult result;
     auto pushResult = [&](const TaskHandle& task) {
@@ -64,7 +66,7 @@ void detail::GroupControl::updateState() {
     // 1. any errors occurred and we have early/cancel enabled
     // 2. no more pending tasks, there is at least 1 error, and we do not have Ignore enabled (aka it is Late)
     bool reportErrorEarly = behavior == TaskGroupFailBehavior::Early || behavior == TaskGroupFailBehavior::Cancel;
-    if (anyErrored && (reportErrorEarly || (!anyPending && behavior == TaskGroupFailBehavior::Late))) {
+    if (anyErrored && (reportErrorEarly || (pending == 0 && behavior == TaskGroupFailBehavior::Late))) {
         m_status.store(GroupStatus::Failed, std::memory_order::release);
 
         result.status = GroupStatus::Failed;
@@ -81,7 +83,7 @@ void detail::GroupControl::updateState() {
                 task.cancel();
             }
         }
-    } else if (!anyPending) {
+    } else if (pending == 0) {
         m_status.store(GroupStatus::Completed, std::memory_order::release);
 
         result.status = GroupStatus::Completed;
@@ -110,7 +112,11 @@ bool TaskGroup::add(TaskHandle handle) {
         return false;
     }
 
-    m_ctl->m_tasks.insert(handle);
+    auto [_, inserted] = m_ctl->m_tasks.insert(handle);
+    if (inserted) {
+        m_ctl->m_pendingTasks.fetch_add(1, std::memory_order::relaxed);
+    }
+
     return true;
 }
 
@@ -119,7 +125,12 @@ bool TaskGroup::remove(TaskHandle handle) {
         return false;
     }
 
-    return m_ctl->m_tasks.erase(handle) > 0;
+    if (m_ctl->m_tasks.erase(handle) > 0) {
+        m_ctl->m_pendingTasks.fetch_sub(1, std::memory_order::relaxed);
+        return true;
+    }
+
+    return false;
 }
 
 void TaskGroup::cancel() {
@@ -165,6 +176,24 @@ void TaskGroup::close(Function<void(TaskGroupResult)> callback) {
     }
 }
 
+TaskGroupResult TaskGroup::wait() {
+    AL_ASSERT(!m_ctl->m_closed.load(std::memory_order::acquire));
+
+    std::optional<TaskGroupResult> result;
+    this->close([&result](TaskGroupResult r) {
+        result = std::move(r);
+    });
+
+    while (this->status() == GroupStatus::Pending) {
+        ALManager::get().lendMainThread();
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+
+    AL_ASSERT(result && "result must be present now");
+
+    return result.value();
+}
+
 GroupStatus TaskGroup::status() const {
     return m_ctl->m_status.load(std::memory_order::acquire);
 }
@@ -183,6 +212,14 @@ void TaskGroup::setEagerDelivery(bool eager) {
     }
 
     m_ctl->m_eagerDelivery.store(eager, std::memory_order::release);
+}
+
+size_t TaskGroup::totalTasks() const {
+    return m_ctl->m_tasks.size();
+}
+
+size_t TaskGroup::pendingTasks() const {
+    return m_ctl->m_pendingTasks.load(std::memory_order::acquire);
 }
 
 }

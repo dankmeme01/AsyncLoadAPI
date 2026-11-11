@@ -87,6 +87,12 @@ public:
     /// This may invoke the callback eagerly if the group is empty or reaches the terminal state immediately (e.g. a task failed or all are already successful).
     void close(geode::Function<void(TaskGroupResult)> callback = nullptr);
 
+    /// Waits for the group to reach a terminal state and returns the result.
+    /// This is to be used as an alternative to `close`, and NOT to be used together. It is illegal to call this after `close`.
+    /// This is a blocking call and it will efficiently utilize the current thread to help run tasks.
+    /// This must be called only on the main thread.
+    TaskGroupResult wait();
+
     /// Returns the status of the task group. This is generally defined as:
     /// * For open groups: open
     /// * For empty groups: completed
@@ -107,6 +113,12 @@ public:
     ///
     /// By setting this to `true`, you allow the completion callback to be invoked immediately by the same thread that called `close`.
     void setEagerDelivery(bool eager);
+
+    /// Returns the total amount of tasks that were added to this group
+    size_t totalTasks() const;
+
+    /// Returns the amount of tasks that are currently pending in this group
+    size_t pendingTasks() const;
 
 private:
     std::shared_ptr<detail::GroupControl> m_ctl;
