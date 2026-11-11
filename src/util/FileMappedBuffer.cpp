@@ -22,6 +22,7 @@ FileMappedBuffer::FileMappedBuffer(FileMappedBuffer&& other) noexcept {
 
 FileMappedBuffer& FileMappedBuffer::operator=(FileMappedBuffer&& other) noexcept {
     if (this != &other) {
+        this->_destroy();
         m_ptr = std::exchange(other.m_ptr, nullptr);
         m_size = std::exchange(other.m_size, 0);
         m_fd = std::exchange(other.m_fd, INVALID_FD);

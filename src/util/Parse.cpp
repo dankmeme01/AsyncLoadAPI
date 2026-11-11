@@ -15,7 +15,7 @@ std::optional<CCRect> parseRect(std::string_view str) {
     CCPoint origin;
     CCSize size;
 
-    if (str[0] != '{' || str[str.size() - 1] != '}') {
+    if (!str.starts_with('{') || !str.ends_with('}')) {
         return std::nullopt;
     }
 

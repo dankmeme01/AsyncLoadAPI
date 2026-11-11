@@ -48,7 +48,7 @@ public:
 private:
     uint8_t* m_ptr = nullptr;
     size_t m_size = 0;
-    FileMappedBufferFd m_fd;
+    FileMappedBufferFd m_fd = INVALID_FD;
 
     FileMappedBuffer() = default;
 

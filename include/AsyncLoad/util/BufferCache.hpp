@@ -34,7 +34,7 @@ struct CachedBuffer {
 private:
     friend class BufferCache;
     std::unique_ptr<uint8_t[]> m_data;
-    size_t m_size;
+    size_t m_size = 0;
 };
 
 struct CachedBufferChunk {

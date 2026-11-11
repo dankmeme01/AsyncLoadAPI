@@ -337,6 +337,9 @@ TaskAdvanceResult TextureTask::startNoPBOLoad() {
         m_image->data.data()
     ));
 
+    // unbind texture
+    ccGLBindTexture2D(0);
+
     this->succeed(this->finalizeTexture(num));
 
     return TaskAdvanceResult::Finished;

@@ -226,6 +226,10 @@ void FileMappedBuffer::_destroy() {
     if (m_fd != INVALID_FD) {
         close(m_fd);
     }
+
+    m_fd = INVALID_FD;
+    m_ptr = nullptr;
+    m_size = 0;
 }
 
 $on_mod(Loaded) {
