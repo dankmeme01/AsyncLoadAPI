@@ -133,7 +133,7 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
 
     void cloneSearchPaths() {
         auto paths = this->getSearchPaths();
-        AL_TRACE("Cloning search paths ({} paths)", paths.size());
+        AL_TRACE_NOISY("Cloning search paths ({} paths)", paths.size());
 
         auto vec = std::make_shared<std::vector<std::string>>();
         vec->reserve(paths.size());
