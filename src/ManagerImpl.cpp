@@ -58,7 +58,7 @@ void ALManager::Impl::submitTask(std::shared_ptr<Task> task) {
     // bypass warning about side effects in typeid
     auto& t = *task;
 
-    AL_TRACE("Submitting task {}", task->name());
+    AL_TRACE_NOISY("Submitting task {}", task->name());
 
     auto active = m_activeTasks.lock();
     active->emplace(task->id(), task->control());

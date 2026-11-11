@@ -93,7 +93,7 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
                 m_imageData = std::move(*res);
             }
 
-            AL_TRACE("Image read finished in {}", in.elapsed());
+            AL_TRACE_NOISY("Image read finished in {}", in.elapsed());
             m_state = State::ImageRead;
         } break;
 
@@ -211,7 +211,7 @@ void TextureTask::preparePBO() {
     }
 
     m_glPbo = ALManager::get().requestPBO(byteSize);
-    AL_TRACE("allocated PBO {} with capacity {} for {}", m_glPbo.get(), m_glPbo.capacity(), this->name());
+    AL_TRACE_NOISY("allocated PBO {} with capacity {} for {}", m_glPbo.get(), m_glPbo.capacity(), this->name());
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo.get());
 }
 

@@ -71,7 +71,8 @@ TaskHandle ALManager::loadTextureInner(std::string_view path, TextureLoadParams:
     return this->submitTextureLoad(TextureLoadParams{
         .path = fp,
         .isFullPath = true,
-        .callback = [cb = std::move(callback), fp = std::move(fp), tc](auto result) mutable {
+        // note: fp not moved here because it would kill `path` when sso is used :P
+        .callback = [cb = std::move(callback), fp, tc](auto result) mutable {
             if (!result) return cb(std::move(result));
 
             auto tex = std::move(result).unwrap();

@@ -134,7 +134,7 @@ static Result<OwnedBuffer> openAndReadDiskOwned(const char* path) {
     return Ok(std::move(buffer));
 }
 
-bool fileExists(ZStringView path) {
+bool impl::fileExists(ZStringView path) {
     std::string_view v{path};
     if (!v.empty() && v[0] == '/') {
         // absolute path
@@ -156,7 +156,7 @@ bool initializeAAssetManager() {
     return false;
 }
 
-Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
+Result<CachedBufferChunk> impl::getFileData(ZStringView path) {
     std::string_view sv{path};
     if (!sv.empty() && sv[0] == '/') {
         // absolute path, read from disk
@@ -167,7 +167,7 @@ Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
     }
 }
 
-Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
+Result<OwnedBuffer> impl::getFileDataOwned(ZStringView path) {
     std::string_view sv{path};
     if (!sv.empty() && sv[0] == '/') {
         // absolute path, read from disk
@@ -180,7 +180,7 @@ Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
 
 // mmap implementation
 
-Result<FileMappedBuffer> getMappedFileImpl(ZStringView path) {
+Result<FileMappedBuffer> impl::getMappedFile(ZStringView path) {
     if (!canMapFile(path, true)) {
         return Err("File '{}' cannot be memory mapped, it is not a file on disk", path);
     }

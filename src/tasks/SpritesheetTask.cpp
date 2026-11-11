@@ -383,7 +383,7 @@ bool SpritesheetTask::doMerge() {
 void SpritesheetTask::addAndComplete() {
     auto& state = *m_spritesheetState;
 
-    log::debug(
+    AL_TRACE(
         "Spritesheet load complete for '{}': {} frames ({} base, {} unloaded, {} loaded), {} candidate plists",
         state.m_name,
         state.m_loadedFrameNames.size(), state.m_spriteFrames.size(), state.m_pendingUnloadedMergeFrames.size(), state.m_pendingMergeFrames.size(),
@@ -391,9 +391,9 @@ void SpritesheetTask::addAndComplete() {
     );
 #ifdef AL_DEBUG
     if (!state.m_mergeCandidates.empty()) {
-        log::debug("Considered candidates:");
+        AL_TRACE_NOISY("Considered candidates:");
         for (auto& mc : state.m_mergeCandidates) {
-            log::debug("  {} ({} frames)", mc.pngPath, mc.data.getFrames().size());
+            AL_TRACE_NOISY("  {} ({} frames)", mc.pngPath, mc.data.getFrames().size());
         }
     }
 #endif

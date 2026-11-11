@@ -5,6 +5,7 @@ if TYPE_CHECKING:
 def main(build: Build):
     config = build.config
     debug = build.add_option("ASYNCLOAD_DEBUG", False, "Enable debug mode for AsyncLoad")
+    install = build.add_option("ASYNCLOAD_INSTALL", False, "Install mod after building for Android")
     caching = build.add_option("ASYNCLOAD_ENABLE_CACHE", False, "Enable PBO/buffer caching")
 
     build.add_include_dir("src")
@@ -47,3 +48,11 @@ def main(build: Build):
         build.add_definition("AL_DEBUG")
     if caching:
         build.add_definition("ENABLE_CACHE")
+
+    if install:
+        build.enable_hooks()
+
+def post_build(ctx: HookContext):
+    if ctx.platform.is_android() and adb.is_device_connected():
+        adb.install(ctx.build_dir / "dankmeme.async-load-api.geode")
+        adb.launch_game()

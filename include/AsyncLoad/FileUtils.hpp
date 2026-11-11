@@ -123,10 +123,10 @@ struct FileUtilsProvider {
 AL_EVENT_EXPORT(void, setFileUtilsProvider, (FileUtilsProvider* provider), (provider));
 
 namespace impl {
-    bool fileExists(geode::ZStringView path);
-    geode::Result<CachedBufferChunk> getFileData(geode::ZStringView path);
-    geode::Result<OwnedBuffer> getFileDataOwned(geode::ZStringView path);
-    geode::Result<FileMappedBuffer> getMappedFile(geode::ZStringView path);
+    AL_DLL bool fileExists(geode::ZStringView path);
+    AL_DLL geode::Result<CachedBufferChunk> getFileData(geode::ZStringView path);
+    AL_DLL geode::Result<OwnedBuffer> getFileDataOwned(geode::ZStringView path);
+    AL_DLL geode::Result<FileMappedBuffer> getMappedFile(geode::ZStringView path);
 }
 
 AL_EVENT_EXPORT(size_t, getFPFFCacheHits, (), ());

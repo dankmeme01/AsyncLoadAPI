@@ -20,5 +20,5 @@ set(GEODE_CODEGEN_EXTRA_ARGS "--skip-pugixml" CACHE STRING "" FORCE)
 set(GEODE_NO_PUGIXML_HEADER ON CACHE BOOL "" FORCE)
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 
-CPMAddPackage("gh:dankmeme01/geobuild#e23beaf")
+CPMAddPackage("gh:dankmeme01/geobuild#v2")
 include("${CMAKE_CURRENT_BINARY_DIR}/geobuild-gen.cmake")
