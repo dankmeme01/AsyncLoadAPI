@@ -169,6 +169,10 @@ SpritesheetTask::SpritesheetTask(std::string_view name, SpritesheetMergeBehavior
     m_state = State::Start;
 }
 
+std::string_view SpritesheetTask::getSheetName() const {
+    return m_spritesheetState ? std::string_view{m_spritesheetState->m_name} : "";
+}
+
 TaskAdvanceResult SpritesheetTask::advance(bool mainThread) {
     if (!this->shouldRun()) return TaskAdvanceResult::Finished;
 

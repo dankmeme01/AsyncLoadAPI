@@ -143,6 +143,7 @@ struct HookedFileUtils : public Modify<HookedFileUtils, CCFileUtils> {
 
         *g_searchPaths.lock() = std::move(vec);
         g_texturePacks.store(this->getTexturePackCount() > 0, std::memory_order::relaxed);
+        g_cache.lock()->clear();
     }
 
     static void doCleanup(bool searchPaths = false) {

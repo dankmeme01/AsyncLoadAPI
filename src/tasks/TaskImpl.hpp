@@ -22,7 +22,6 @@ namespace detail {
         asp::Instant m_startedAt;
         std::string m_error;
         std::string m_name;
-        std::vector<geode::Function<void()>> m_completionHooks;
         std::atomic<TaskStatus> m_status{TaskStatus::Pending};
         std::atomic<bool> m_cancelled{false};
 
@@ -31,17 +30,8 @@ namespace detail {
             m_status.store(TaskStatus::Cancelled, std::memory_order::release);
         }
 
-        void invokeCompletionHooks() {
-            for (auto& hook : m_completionHooks) {
-                hook();
-            }
-            m_completionHooks.clear();
-        }
-
-        void addCompletionHook(geode::Function<void()> hook) {
-            m_completionHooks.push_back(std::move(hook));
-        }
-
+        virtual void invokeCompletionHooks() = 0;
+        virtual void addCompletionHook(geode::Function<void()> hook) = 0;
 
         std::string name() const {
             if (!m_name.empty()) return m_name;
@@ -51,6 +41,8 @@ namespace detail {
 
     template <typename T>
     struct TaskControl : TaskControlBase {
+        static constexpr bool Copiable = std::is_copy_constructible_v<T>;
+
         using Callback = geode::Function<void(geode::Result<T>)>;
         explicit TaskControl(Callback callback) : m_callback(std::move(callback)) {}
 
@@ -68,10 +60,46 @@ namespace detail {
         void invokeCallback() {
             AL_ASSERT(m_result.has_value() && "TaskControl::invokeCallback called before completion");
 
-            if (m_callback) {
+            if (!m_callback) return;
+
+            // depending on whether we have any hooks that want to consume the value, decide if it should be copied or not
+            bool doCopy = !m_completionHooksValue.empty();
+            if (!doCopy) {
                 m_callback(std::move(*m_result));
                 m_result.reset();
+            } else if constexpr (Copiable) {
+                m_callback(*m_result);
+            } else {
+                // not copiable and we have completion hooks with value
+                AL_ASSERT(false);
             }
+        }
+
+        void invokeCompletionHooks() override {
+            if constexpr (Copiable) {
+                for (auto& hook : m_completionHooksValue) {
+                    if (m_result) {
+                        hook(*m_result);
+                    } else {
+                        hook(geode::Err("Task was cancelled"));
+                    }
+                }
+                m_completionHooksValue.clear();
+            }
+            m_result.reset();
+
+            for (auto& hook : m_completionHooks) {
+                hook();
+            }
+            m_completionHooks.clear();
+        }
+
+        void addCompletionHook(geode::Function<void()> hook) override {
+            m_completionHooks.push_back(std::move(hook));
+        }
+
+        void addCompletionHook(Callback hook) requires(Copiable) {
+            m_completionHooksValue.push_back(std::move(hook));
         }
 
         std::string error() const override {
@@ -80,6 +108,8 @@ namespace detail {
 
         Callback m_callback;
         std::optional<geode::Result<T>> m_result;
+        std::vector<geode::Function<void()>> m_completionHooks;
+        std::vector<Callback> m_completionHooksValue;
     };
 }
 
@@ -136,6 +166,8 @@ struct Task {
 template <typename T>
 struct TypedTask : Task {
     using Control = detail::TaskControl<T>;
+    using Output = T;
+
     std::shared_ptr<Control> m_ctl;
 
     explicit TypedTask(std::shared_ptr<Control> ctl) : m_ctl(std::move(ctl)) {}
@@ -166,7 +198,7 @@ struct TypedTask : Task {
     }
 
     void cancel() override {
-        m_ctl->m_cancelled.store(true, std::memory_order::release);
+        m_ctl->cancel();
     }
 
     std::shared_ptr<detail::TaskControlBase> control() const override {

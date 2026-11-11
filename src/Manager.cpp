@@ -4,6 +4,7 @@
 #include <Geode/utils/StringMap.hpp>
 #include "ManagerImpl.hpp"
 #include "tasks/ImageTask.hpp"
+#include "tasks/JoinTask.hpp"
 #include "tasks/TextureTask.hpp"
 #include "tasks/SpriteFramesTask.hpp"
 #include "tasks/ReadyTask.hpp"
@@ -34,7 +35,7 @@ TaskHandle ALManager::submitImageLoad(ImageLoadParams&& params) {
 
 TaskHandle ALManager::submitTextureLoad(TextureLoadParams&& params) {
     auto cb = std::move(params.callback);
-    return m_impl->createAndSubmitTask<TextureTask>(std::move(cb), std::move(params));
+    return m_impl->createAndSubmitTask<TextureTask>(std::move(cb), std::move(params), false);
 }
 
 TaskHandle ALManager::submitSpriteFramesLoad(SpriteFramesLoadParams&& params) {
@@ -68,18 +69,31 @@ TaskHandle ALManager::loadTextureInner(std::string_view path, TextureLoadParams:
         }
     }
 
-    return this->submitTextureLoad(TextureLoadParams{
-        .path = fp,
-        .isFullPath = true,
-        // note: fp not moved here because it would kill `path` when sso is used :P
-        .callback = [cb = std::move(callback), fp, tc](auto result) mutable {
+    // check if it's already pending and return a JoinTask
+    if (auto existingTask = m_impl->findTextureTask(fp)) {
+        using JTask = JoinTask<TextureTask>;
+        auto control = std::make_shared<JTask::Control>(std::move(callback));
+        auto task = std::make_shared<JTask>(existingTask, control);
+        m_impl->submitTask(task);
+        AL_TRACE("loadTexture: task {} will join existing task {} for texture '{}'", task->id(), existingTask->m_id, fp);
+
+        return TaskHandle{control};
+    }
+
+    return m_impl->createAndSubmitTask<TextureTask>(
+        [cb = std::move(callback), fp, tc](auto result) mutable {
             if (!result) return cb(std::move(result));
 
             auto tex = std::move(result).unwrap();
             tc->m_pTextures->setObject(tex, fp);
             cb(Ok(tex));
         },
-    });
+        TextureLoadParams{
+            .path = fp,
+            .isFullPath = true,
+        },
+        true
+    );
 }
 
 TaskHandle ALManager::loadTexture(std::string_view path, TextureLoadParams::Callback callback, bool fullPath) {
@@ -91,6 +105,17 @@ TaskHandle ALManager::loadTextureEager(std::string_view path, TextureLoadParams:
 }
 
 TaskHandle ALManager::loadSpritesheet(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior) {
+    // check if it's already pending and return a JoinTask
+    if (auto existingTask = m_impl->findSpritesheetTask(name)) {
+        using JTask = JoinTask<SpritesheetTask>;
+        auto control = std::make_shared<JTask::Control>(std::move(callback));
+        auto task = std::make_shared<JTask>(existingTask, control);
+        m_impl->submitTask(task);
+        AL_TRACE("loadSpritesheet: task {} will join existing task {} for sheet '{}'", task->id(), existingTask->m_id, name);
+
+        return TaskHandle{control};
+    }
+
     return m_impl->createAndSubmitTask<SpritesheetTask>(std::move(callback), name, mergeBehavior);
 }
 

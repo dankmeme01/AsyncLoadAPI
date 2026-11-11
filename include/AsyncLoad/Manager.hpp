@@ -121,6 +121,9 @@ public:
     /// Uses CCTextureCache to skip loading if the texture is already loaded.
     /// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
     ///
+    /// If another task with the same `path` value is already in progress, this does not spawn a duplicate task to load it again.
+    /// Instead, it will join that task and invoke the callback when that task is done.
+    ///
     /// NOTE: if the texture exists in cache, this will never invoke the callback immediately.
     /// There is a guarantee that the callback will be invoked to run as soon as possible (usually next frame, on main thread),
     /// and if that is not enough, you can use `loadTextureEager`.
@@ -136,6 +139,9 @@ public:
     /// This loads the appropriate .png and .plist files in parallel and uses caches to avoid excessive loading.
     /// You must pass the name without any extension to this function, e.g. `GJ_GameSheet_01`.
     /// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
+    ///
+    /// If the same sheet is already being loaded, this does not spawn a duplicate task to load it again.
+    /// Instead, it will join that task and invoke the callback when that task is done.
     TaskHandle loadSpritesheet(
         std::string_view name,
         LoadSpritesheetCallback callback,

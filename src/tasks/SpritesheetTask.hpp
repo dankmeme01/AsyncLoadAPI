@@ -44,6 +44,8 @@ struct SpritesheetTask final : CrtpTask<SpritesheetTask, LoadedSpritesheet> {
     bool wantsInitialMainThread() const override {
         return true;
     }
+
+    std::string_view getSheetName() const;
 };
 
 }

@@ -3,6 +3,8 @@
 #include <AsyncLoad/FileUtils.hpp>
 #include <AsyncLoad/TaskGroup.hpp>
 #include "tasks/TaskImpl.hpp"
+#include "tasks/TextureTask.hpp"
+#include "tasks/SpritesheetTask.hpp"
 
 #include <asp/thread/ThreadPool.hpp>
 #include <Geode/utils/StringMap.hpp>
@@ -15,11 +17,14 @@ namespace AsyncLoad {
 struct ALManager::Impl : CCObject {
     std::vector<asp::Thread<>> m_threads;
     asp::Mutex<gtl::flat_hash_map<uint64_t, std::shared_ptr<detail::TaskControlBase>>> m_activeTasks;
+    asp::Mutex<gtl::flat_hash_map<std::string, std::shared_ptr<TextureTask::Control>>> m_textureTasks;
+    asp::Mutex<gtl::flat_hash_map<std::string, std::shared_ptr<SpritesheetTask::Control>>> m_spriteSheetTasks;
     asp::Channel<std::shared_ptr<Task>> m_taskQueue;
     asp::Channel<std::shared_ptr<Task>> m_MTtaskQueue;
     asp::Mutex<gtl::flat_hash_map<uint64_t, std::shared_ptr<Task>>> m_suspendedTasks;
     asp::Mutex<gtl::flat_hash_set<uint64_t>> m_earlyResumptions;
     asp::Mutex<std::deque<std::shared_ptr<detail::GroupControl>>> m_groupControlQueue;
+
     std::vector<SmartPBO> m_pbos;
 
     Impl();
@@ -38,8 +43,12 @@ struct ALManager::Impl : CCObject {
     }
 
     void submitTask(std::shared_ptr<Task> task);
+    void removeTask(const std::shared_ptr<Task>& id);
     void update(float dt);
     void enqueueFinishedTask(std::shared_ptr<Task> task, TaskAdvanceResult advResult, bool mainThread);
+
+    std::shared_ptr<TextureTask::Control> findTextureTask(std::string_view path);
+    std::shared_ptr<SpritesheetTask::Control> findSpritesheetTask(std::string_view name);
 
     /// Suspends the task if the early resumption set does not contain it
     void suspendTask(std::shared_ptr<Task> task);

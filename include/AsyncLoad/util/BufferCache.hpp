@@ -9,7 +9,7 @@
 
 namespace AsyncLoad {
 
-struct CachedBuffer {
+struct AL_DLL CachedBuffer {
     uint8_t* data() const {
         return m_data.get();
     }

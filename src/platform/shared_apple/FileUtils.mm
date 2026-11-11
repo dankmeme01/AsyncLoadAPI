@@ -14,7 +14,7 @@ namespace AsyncLoad {
 // CCFileUtils::isFileExist on MacOS will always return false if the path is a
 // relative path that does not contain any slashes, so we reimplement it properly.
 // Thanks cocos!
-bool fileExists(ZStringView path) {
+bool impl::fileExists(ZStringView path) {
     if (path.empty()) return false;
 
     auto view = path.view();
@@ -64,7 +64,7 @@ std::string getPathForDirAndFilenameImpl(ZStringView directory, ZStringView file
 }
 
 
-Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
+Result<CachedBufferChunk> impl::getFileData(ZStringView path) {
     NSString* nsp = [NSString stringWithUTF8String:path.c_str()];
     NSError* error = nil;
     NSData* data = [NSData dataWithContentsOfFile:nsp options:NSDataReadingMappedIfSafe error:&error];
@@ -78,7 +78,7 @@ Result<CachedBufferChunk> getFileDataImpl(ZStringView path) {
     return Err("Failed to read path '{}': {}", path, [[error localizedDescription] UTF8String]);
 }
 
-Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
+Result<OwnedBuffer> impl::getFileDataOwned(ZStringView path) {
     NSString* nsp = [NSString stringWithUTF8String:path.c_str()];
     NSError* error = nil;
     NSData* data = [NSData dataWithContentsOfFile:nsp options:NSDataReadingMappedIfSafe error:&error];
@@ -98,7 +98,7 @@ Result<OwnedBuffer> getFileDataOwnedImpl(ZStringView path) {
 
 // mmap implementation
 
-Result<FileMappedBuffer> getMappedFileImpl(ZStringView path) {
+Result<FileMappedBuffer> impl::getMappedFile(ZStringView path) {
     if (!canMapFile(path, true)) {
         return Err("File '{}' cannot be memory mapped, it is not a file on disk", path);
     }

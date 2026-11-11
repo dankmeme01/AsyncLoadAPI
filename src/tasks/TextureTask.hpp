@@ -36,8 +36,9 @@ struct TextureTask final : CrtpTask<TextureTask, geode::Ref<cocos2d::CCTexture2D
     void* m_mappedPboPtr = nullptr;
     bool m_pathIsFull;
     bool m_pboMapped = false;
+    bool m_joinable = false;
 
-    TextureTask(TextureLoadParams&& params, std::shared_ptr<Control> ctl);
+    TextureTask(TextureLoadParams&& params, bool joinable, std::shared_ptr<Control> ctl);
     ~TextureTask();
 
     // bool finished() const override;
@@ -46,7 +47,6 @@ struct TextureTask final : CrtpTask<TextureTask, geode::Ref<cocos2d::CCTexture2D
 
     void fail(std::string message);
     void succeed(geode::Ref<cocos2d::CCTexture2D> texture);
-
 
     void preparePBO();
     TaskAdvanceResult startAsyncPBOLoad();

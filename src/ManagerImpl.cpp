@@ -64,11 +64,67 @@ void ALManager::Impl::submitTask(std::shared_ptr<Task> task) {
     active->emplace(task->id(), task->control());
     active.unlock();
 
-    if (task->wantsInitialMainThread()) {
-        m_MTtaskQueue.push(std::move(task));
-    } else {
-        m_taskQueue.push(std::move(task));
+    // register if it's a texture/spritesheet task
+    if (auto t = typeinfo_pointer_cast<TextureTask>(task)) {
+        if (t->m_joinable) {
+            m_textureTasks.lock()->emplace(t->m_path, t->m_ctl);
+        }
+    } else if (auto t = typeinfo_pointer_cast<SpritesheetTask>(task)) {
+        // spritesheet task can complete instantly if cached, so only insert into map when needed
+        if (t->status() == TaskStatus::Pending) {
+            m_spriteSheetTasks.lock()->emplace(t->getSheetName(), t->m_ctl);
+        }
     }
+
+    // push to worker queue
+    if (task->wantsInitialMainThread()) {
+        m_MTtaskQueue.push(task);
+    } else {
+        m_taskQueue.push(task);
+    }
+}
+
+void ALManager::Impl::removeTask(const std::shared_ptr<Task>& task) {
+    auto active = m_activeTasks.lock();
+    auto it = active->find(task->id());
+    if (it == active->end()) {
+        log::warn("Attempted to remove task {} but it was not found in active tasks", task->name());
+        return;
+    }
+
+    // remove from early resumptions because sometimes a task may be resumed without ever getting to suspending (JoinTask)
+    m_earlyResumptions.lock()->erase(task->id());
+
+    if (auto t = typeinfo_pointer_cast<TextureTask>(task)) {
+        if (t->m_joinable) {
+            m_textureTasks.lock()->erase(t->m_path);
+        }
+    } else if (auto t = typeinfo_pointer_cast<SpritesheetTask>(task)) {
+        auto name = t->getSheetName();
+        if (!name.empty()) {
+            m_spriteSheetTasks.lock()->erase(name);
+        }
+    }
+
+    active->erase(it);
+}
+
+std::shared_ptr<TextureTask::Control> ALManager::Impl::findTextureTask(std::string_view path) {
+    auto tasks = m_textureTasks.lock();
+    auto it = tasks->find(path);
+    if (it == tasks->end()) {
+        return nullptr;
+    }
+    return it->second;
+}
+
+std::shared_ptr<SpritesheetTask::Control> ALManager::Impl::findSpritesheetTask(std::string_view name) {
+    auto tasks = m_spriteSheetTasks.lock();
+    auto it = tasks->find(name);
+    if (it == tasks->end()) {
+        return nullptr;
+    }
+    return it->second;
 }
 
 void ALManager::Impl::update(float dt) {
@@ -109,7 +165,7 @@ void ALManager::Impl::update(float dt) {
         }
 
         if (finished) {
-            m_activeTasks.lock()->erase(task->id());
+            this->removeTask(task);
 
             // task finished (error / success / cancelled), remove the task and run the callback if it wasn't cancelled
             AL_TRACE_NOISY("{} finished after {}, state: {}", task->name(), task->elapsed(), task->status());
@@ -155,6 +211,9 @@ void ALManager::Impl::cancelAll() {
         task->cancel();
     }
     active->clear();
+
+    m_textureTasks.lock()->clear();
+    m_spriteSheetTasks.lock()->clear();
 }
 
 void ALManager::Impl::enqueueTaskGroupPoll(std::shared_ptr<detail::GroupControl> ctl) {
