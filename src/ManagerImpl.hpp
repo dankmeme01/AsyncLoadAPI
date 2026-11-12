@@ -4,6 +4,8 @@
 #include <AsyncLoad/TaskGroup.hpp>
 #include "tasks/TaskImpl.hpp"
 #include "tasks/TextureTask.hpp"
+#include "tasks/ReadyTask.hpp"
+#include "tasks/JoinTask.hpp"
 #include "tasks/SpritesheetTask.hpp"
 
 #include <asp/thread/ThreadPool.hpp>
@@ -42,6 +44,16 @@ struct ALManager::Impl : CCObject {
         return task->handle();
     }
 
+    template <typename T, typename R = ReadyTask<T>, typename Cb>
+    TaskHandle createReadyTask(geode::Result<T> result, Cb&& cb) {
+        return this->createAndSubmitTask<R>(std::forward<Cb>(cb), std::move(result));
+    }
+
+    template <typename Task, typename Cb, typename Control = typename Task::Control>
+    TaskHandle createJoinTask(std::shared_ptr<Control> task, Cb&& cb) {
+        return this->createAndSubmitTask<JoinTask<Task>>(std::forward<Cb>(cb), std::move(task));
+    }
+
     void submitTask(std::shared_ptr<Task> task);
     void removeTask(const std::shared_ptr<Task>& id);
     void update(float dt);
@@ -49,6 +61,7 @@ struct ALManager::Impl : CCObject {
 
     std::shared_ptr<TextureTask::Control> findTextureTask(std::string_view path);
     std::shared_ptr<SpritesheetTask::Control> findSpritesheetTask(std::string_view name);
+
 
     /// Suspends the task if the early resumption set does not contain it
     void suspendTask(std::shared_ptr<Task> task);

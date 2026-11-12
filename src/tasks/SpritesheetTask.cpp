@@ -151,26 +151,12 @@ SpritesheetTask::SpritesheetTask(std::string_view name, SpritesheetMergeBehavior
     sstate->m_name = name;
 
     m_mergeSheets = shouldMerge(behavior);
-
-    // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
-    // without running fullPathForFilename. we will replicate this and also use it as a unique key.
-    auto plistKey = fmt::format("{}.plist", name);
-    auto sfc = CCSpriteFrameCache::get();
-    if (sfc->m_pLoadedFileNames->contains(plistKey)) {
-        // already loaded!
-        m_state = State::Finished;
-        this->complete(Ok(LoadedSpritesheet {
-            .skipped = true
-        }));
-        return;
-    }
-
     m_spritesheetState = std::move(sstate);
     m_state = State::Start;
 }
 
 std::string_view SpritesheetTask::getSheetName() const {
-    return m_spritesheetState ? std::string_view{m_spritesheetState->m_name} : "";
+    return m_spritesheetState->m_name;
 }
 
 TaskAdvanceResult SpritesheetTask::advance(bool mainThread) {

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <AsyncLoad/TaskGroup.hpp>
-#include "TaskImpl.hpp"
 #include <ManagerImpl.hpp>
 #include <gtl/phmap.hpp>
 

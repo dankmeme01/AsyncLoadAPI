@@ -4,10 +4,8 @@
 #include <Geode/utils/StringMap.hpp>
 #include "ManagerImpl.hpp"
 #include "tasks/ImageTask.hpp"
-#include "tasks/JoinTask.hpp"
 #include "tasks/TextureTask.hpp"
 #include "tasks/SpriteFramesTask.hpp"
-#include "tasks/ReadyTask.hpp"
 #include "tasks/SpritesheetTask.hpp"
 
 using namespace geode::prelude;
@@ -59,25 +57,16 @@ TaskHandle ALManager::loadTextureInner(std::string_view path, TextureLoadParams:
             callback(Ok(cachedTex));
             return {};
         } else {
-            using RTask = ReadyTask<Ref<CCTexture2D>>;
             // create a dummy task that is already complete
-            auto control = std::make_shared<RTask::Control>(std::move(callback));
-            auto task = std::make_shared<RTask>(Ok(cachedTex), control);
-
-            m_impl->submitTask(task);
-            return TaskHandle{control};
+            return m_impl->createReadyTask<Ref<CCTexture2D>>(Ok(cachedTex), std::move(callback));
         }
     }
 
     // check if it's already pending and return a JoinTask
     if (auto existingTask = m_impl->findTextureTask(fp)) {
-        using JTask = JoinTask<TextureTask>;
-        auto control = std::make_shared<JTask::Control>(std::move(callback));
-        auto task = std::make_shared<JTask>(existingTask, control);
-        m_impl->submitTask(task);
-        AL_TRACE("loadTexture: task {} will join existing task {} for texture '{}'", task->id(), existingTask->m_id, fp);
-
-        return TaskHandle{control};
+        auto task = m_impl->createJoinTask<TextureTask>(existingTask, std::move(callback));
+        AL_TRACE("loadTexture: task {} will join existing task {} for texture '{}'", task.id(), existingTask->m_id, fp);
+        return task;
     }
 
     return m_impl->createAndSubmitTask<TextureTask>(
@@ -96,6 +85,43 @@ TaskHandle ALManager::loadTextureInner(std::string_view path, TextureLoadParams:
     );
 }
 
+TaskHandle ALManager::loadSpritesheetInner(
+    std::string_view name,
+    LoadSpritesheetCallback callback,
+    SpritesheetMergeBehavior mergeBehavior,
+    bool eager
+) {
+    auto sfc = CCSpriteFrameCache::get();
+
+    // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
+    // without running fullPathForFilename. we will replicate this and also use it as a unique key.
+    auto plistKey = fmt::format("{}.plist", name);
+    if (sfc->m_pLoadedFileNames->contains(plistKey)) {
+        // already loaded!
+        AL_TRACE("loadSpritesheet: cache hit for {}", plistKey);
+        LoadedSpritesheet result {
+            .skipped = true
+        };
+
+        if (eager) {
+            callback(Ok(std::move(result)));
+            return {};
+        } else {
+            // create a dummy task that is already complete
+            return m_impl->createReadyTask<LoadedSpritesheet>(Ok(std::move(result)), std::move(callback));
+        }
+    }
+
+    // check if it's already pending and return a JoinTask
+    if (auto existingTask = m_impl->findSpritesheetTask(name)) {
+        auto task = m_impl->createJoinTask<SpritesheetTask>(existingTask, std::move(callback));
+        AL_TRACE("loadSpritesheet: task {} will join existing task {} for sheet '{}'", task.id(), existingTask->m_id, name);
+        return task;
+    }
+
+    return m_impl->createAndSubmitTask<SpritesheetTask>(std::move(callback), name, mergeBehavior);
+}
+
 TaskHandle ALManager::loadTexture(std::string_view path, TextureLoadParams::Callback callback, bool fullPath) {
     return loadTextureInner(path, std::move(callback), fullPath, false);
 }
@@ -105,18 +131,11 @@ TaskHandle ALManager::loadTextureEager(std::string_view path, TextureLoadParams:
 }
 
 TaskHandle ALManager::loadSpritesheet(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior) {
-    // check if it's already pending and return a JoinTask
-    if (auto existingTask = m_impl->findSpritesheetTask(name)) {
-        using JTask = JoinTask<SpritesheetTask>;
-        auto control = std::make_shared<JTask::Control>(std::move(callback));
-        auto task = std::make_shared<JTask>(existingTask, control);
-        m_impl->submitTask(task);
-        AL_TRACE("loadSpritesheet: task {} will join existing task {} for sheet '{}'", task->id(), existingTask->m_id, name);
+    return loadSpritesheetInner(name, std::move(callback), mergeBehavior, false);
+}
 
-        return TaskHandle{control};
-    }
-
-    return m_impl->createAndSubmitTask<SpritesheetTask>(std::move(callback), name, mergeBehavior);
+TaskHandle ALManager::loadSpritesheetEager(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior) {
+    return loadSpritesheetInner(name, std::move(callback), mergeBehavior, true);
 }
 
 SmartPBO ALManager::requestPBO(size_t capacity) {

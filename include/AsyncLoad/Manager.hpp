@@ -148,6 +148,15 @@ public:
         SpritesheetMergeBehavior mergeBehavior = SpritesheetMergeBehavior::Default
     );
 
+    /// Like `loadSpritesheet`, but if the spritesheet is already in cache, the callback will be invoked immediately,
+    /// and the returned handle will be empty.
+    TaskHandle loadSpritesheetEager(
+        std::string_view name,
+        LoadSpritesheetCallback callback,
+        SpritesheetMergeBehavior mergeBehavior = SpritesheetMergeBehavior::Default
+    );
+
+
     // Submission APIs - low-level APIs for high control.
     // They are fully thread-safe, and enqueue operations to happen in the background, giving you a handle to cancel it and letting you pass a callback.
     // They do not interact with any caches. For a slightly higher level API that will use cocos caches, see ALManager::loadXXXX APIs.
@@ -180,6 +189,7 @@ private:
     ALManager();
 
     TaskHandle loadTextureInner(std::string_view path, TextureLoadParams::Callback callback, bool fullPath, bool eager);
+    TaskHandle loadSpritesheetInner(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior, bool eager);
 };
 
 #endif

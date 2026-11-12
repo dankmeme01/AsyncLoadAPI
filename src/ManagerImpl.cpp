@@ -70,10 +70,7 @@ void ALManager::Impl::submitTask(std::shared_ptr<Task> task) {
             m_textureTasks.lock()->emplace(t->m_path, t->m_ctl);
         }
     } else if (auto t = typeinfo_pointer_cast<SpritesheetTask>(task)) {
-        // spritesheet task can complete instantly if cached, so only insert into map when needed
-        if (t->status() == TaskStatus::Pending) {
-            m_spriteSheetTasks.lock()->emplace(t->getSheetName(), t->m_ctl);
-        }
+        m_spriteSheetTasks.lock()->emplace(t->getSheetName(), t->m_ctl);
     }
 
     // push to worker queue
@@ -100,10 +97,7 @@ void ALManager::Impl::removeTask(const std::shared_ptr<Task>& task) {
             m_textureTasks.lock()->erase(t->m_path);
         }
     } else if (auto t = typeinfo_pointer_cast<SpritesheetTask>(task)) {
-        auto name = t->getSheetName();
-        if (!name.empty()) {
-            m_spriteSheetTasks.lock()->erase(name);
-        }
+        m_spriteSheetTasks.lock()->erase(t->getSheetName());
     }
 
     active->erase(it);
