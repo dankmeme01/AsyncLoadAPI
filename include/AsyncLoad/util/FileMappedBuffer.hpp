@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Geode/Result.hpp>
+#include <asp/fs/File.hpp>
 #include "config.hpp"
 #include <span>
 #include <stdint.h>
@@ -8,22 +9,16 @@
 
 namespace AsyncLoad {
 
-#ifdef _WIN32
-using FileMappedBufferFd = void*;
-static auto INVALID_FD = (void*)(uintptr_t)-1;
-#else
-using FileMappedBufferFd = int;
-static int INVALID_FD = -1;
-#endif
-
 class AL_DLL FileMappedBuffer {
 public:
-    /// Expects file fd on posix or HANDLE casted to int on windows
-    /// Takes ownership of the fd, will unmap and close it when the buffer is destroyed
-    static geode::Result<FileMappedBuffer> createWithFd(FileMappedBufferFd fd);
+    /// Takes ownership of the file and returns a buffer that is memory mapped to the entire contents.
+    static geode::Result<FileMappedBuffer> createWithFile(asp::fs::File file);
+
+    /// Like `createWithFile`, but reads a specific offset in file
+    static geode::Result<FileMappedBuffer> createWithFileOffset(asp::fs::File file, size_t offset, size_t size);
 
 #ifdef AsyncLoad_EXPORTS
-    FileMappedBuffer(uint8_t* ptr, size_t size, FileMappedBufferFd fd) : m_ptr(ptr), m_size(size), m_fd(fd) {}
+    FileMappedBuffer(uint8_t* ptr, size_t size, asp::fs::File file) : m_ptr(ptr), m_size(size), m_file(std::move(file)) {}
 #endif
 
     FileMappedBuffer(const FileMappedBuffer&) = delete;
@@ -46,13 +41,16 @@ public:
     bool empty() const;
 
 private:
+    asp::fs::File m_file;
     uint8_t* m_ptr = nullptr;
     size_t m_size = 0;
-    FileMappedBufferFd m_fd = INVALID_FD;
+
+    uint8_t* m_mapBase = nullptr;
+    size_t m_mapLen = 0;
 
     FileMappedBuffer() = default;
 
-    geode::Result<> _map();
+    geode::Result<> _map(std::optional<size_t> offset, std::optional<size_t> size);
     void _destroy();
 };
 

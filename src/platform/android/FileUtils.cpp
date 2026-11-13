@@ -4,10 +4,7 @@
 #include <android/asset_manager_jni.h>
 #include <jni.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <cerrno>
+#include <asp/fs.hpp>
 #include <Geode/cocos/platform/android/jni/JniHelper.h>
 
 using namespace geode::prelude;
@@ -47,11 +44,14 @@ static Result<CachedBufferChunk> openAndReadAAsset(std::string_view path) {
         return Err("Failed to open asset '{}'", path);
     }
 
-    size_t size = AAsset_getLength(asset.get());
+    size_t size = AAsset_getLength64(asset.get());
     auto buffer = BufferCache::get().getSized(size);
-    size_t bytesRead = AAsset_read(asset.get(), buffer.data(), size);
-    if (bytesRead != size) {
+    auto n = AAsset_read(asset.get(), buffer.data(), size);
+
+    if (n < 0) {
         return Err("Failed to read asset '{}'", path);
+    } else if (n != size) {
+        return Err("short read for asset '{}', read {} bytes, expected {}", path, n, size);
     }
 
     return Ok(std::move(buffer));
@@ -63,82 +63,49 @@ static Result<OwnedBuffer> openAndReadAAssetOwned(std::string_view path) {
         return Err("Failed to open asset '{}'", path);
     }
 
-    size_t size = AAsset_getLength(asset.get());
+
+    size_t size = AAsset_getLength64(asset.get());
     auto buffer = std::make_unique_for_overwrite<uint8_t[]>(size);
-    size_t bytesRead = AAsset_read(asset.get(), buffer.get(), size);
-    if (bytesRead != size) {
+    auto n = AAsset_read(asset.get(), buffer.get(), size);
+
+    if (n < 0) {
         return Err("Failed to read asset '{}'", path);
+    } else if (n != size) {
+        return Err("short read for asset '{}', read {} bytes, expected {}", path, n, size);
     }
 
     return Ok(std::move(buffer));
 }
 
-static Result<std::pair<int, size_t>> doOpen(ZStringView path) {
-    int fd = open(path.c_str(), O_RDONLY);
-    if (fd == -1) {
-        return Err("Failed to open file '{}', errno: {}", path, errno);
-    }
-
-    struct stat fst;
-    if (fstat(fd, &fst) == -1) {
-        close(fd);
-        return Err("Failed to stat file '{}', errno: {}", path, errno);
-    }
-
-    return Ok(std::make_pair(fd, fst.st_size));
-}
-
-static Result<> readInto(int fd, void* buffer, size_t size) {
-    size_t totalRead = 0;
-    while (totalRead < size) {
-        auto bytesRead = read(fd, (uint8_t*)buffer + totalRead, size - totalRead);
-        if (bytesRead == -1) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return Err("read failed, errno: {}", errno);
-        } else if (bytesRead == 0) {
-            return Err("read returned EOF after reading {}/{} bytes", totalRead, size);
-        }
-
-        totalRead += bytesRead;
-    }
-
-    return Ok();
-}
-
 static Result<CachedBufferChunk> openAndReadDisk(const char* path) {
-    auto [fd, size] = GEODE_UNWRAP(doOpen(path));
-    auto buffer = BufferCache::get().getSized(size);
-    auto result = readInto(fd, buffer.data(), size);
-    close(fd);
+    auto file = GEODE_UNWRAP(asp::fs::File::open(path));
+    auto size = GEODE_UNWRAP(file.size());
 
-    if (!result) {
-        return Err("Failed to read from file '{}': {}", path, result.unwrapErr());
-    }
+    auto buffer = BufferCache::get().getSized(size);
+    GEODE_UNWRAP(file.readExact(std::span{buffer.data(), size}));
 
     return Ok(std::move(buffer));
 }
 
 static Result<OwnedBuffer> openAndReadDiskOwned(const char* path) {
-    auto [fd, size] = GEODE_UNWRAP(doOpen(path));
+    auto file = GEODE_UNWRAP(asp::fs::File::open(path));
+    auto size = GEODE_UNWRAP(file.size());
 
     auto buffer = std::make_unique_for_overwrite<uint8_t[]>(size);
-    auto result = readInto(fd, buffer.get(), size);
-    close(fd);
+    GEODE_UNWRAP(file.readExact(std::span{buffer.get(), size}));
 
-    if (!result) {
-        return Err("Failed to read from file '{}': {}", path, result.unwrapErr());
-    }
-
-    return Ok(std::move(buffer));
+    return Ok(OwnedBuffer {
+        std::move(buffer),
+        static_cast<size_t>(size)
+    });
 }
 
 bool impl::fileExists(ZStringView path) {
-    std::string_view v{path};
-    if (!v.empty() && v[0] == '/') {
+    asp::fs::PathView p{path.view()};
+    if (p.isAbsolute()) {
         // absolute path
-        return access(path.c_str(), F_OK) == 0;
+        auto meta = p.metadata();
+        return meta && meta.unwrap().isFile();
     }
     return openAAsset(path.view(), AASSET_MODE_UNKNOWN) != nullptr;
 }
@@ -180,56 +147,61 @@ Result<OwnedBuffer> impl::getFileDataOwned(ZStringView path) {
 
 // mmap implementation
 
+static Result<FileMappedBuffer> tryMapAsset(AAsset* asset) {
+    off64_t start, length;
+    int fd = AAsset_openFileDescriptor64(asset, &start, &length);
+    if (fd < 0) {
+        return Err("file cannot be mmaped, it is compressed");
+    }
+
+    return FileMappedBuffer::createWithFileOffset(asp::fs::File::fromFd(fd), start, length);
+}
+
 Result<FileMappedBuffer> impl::getMappedFile(ZStringView path) {
-    if (!canMapFile(path, true)) {
-        return Err("File '{}' cannot be memory mapped, it is not a file on disk", path);
+    if (!asp::fs::PathView{path.view()}.isAbsolute()) {
+        // relative path
+        auto asset = openAAsset(path, AASSET_MODE_UNKNOWN);
+        if (!asset) {
+            return Err("Failed to open asset '{}'", path);
+        }
+
+        return tryMapAsset(asset.get());
     }
 
-    int fd = open(path.c_str(), O_RDONLY);
-    if (fd == -1) {
-        return Err("Failed to open file '{}', errno: {}", path, errno);
-    }
-
-    return FileMappedBuffer::createWithFd(fd);
+    auto file = GEODE_UNWRAP(asp::fs::File::open(path.view()));
+    return FileMappedBuffer::createWithFile(std::move(file));
 }
 
-bool canMapFile(geode::ZStringView path, bool assumeFullPath) {
-    if (assumeFullPath) {
-        return !path.empty() && *path.begin() == '/';
+Result<FileMetadata> impl::getFileMetadata(geode::ZStringView path) {
+    asp::fs::PathView p{path.view()};
+    if (p.isAbsolute()) {
+        // real file on disk, use fs
+        auto meta = GEODE_UNWRAP(p.metadata());
+        return Ok(FileMetadata {
+            .canMap = meta.isFile(),
+            .size = meta.size
+        });
     }
 
-    auto fullpath = fullPathForFilename(path);
-    return !fullpath.empty() && fullpath[0] == '/';
-}
-
-Result<> FileMappedBuffer::_map() {
-    struct stat s;
-    if (fstat(m_fd, &s) == -1) {
-        return Err("Failed to stat file '{}', errno: {}", m_fd, errno);
+    // AAsset
+    auto asset = openAAsset(path, AASSET_MODE_UNKNOWN);
+    if (!asset) {
+        return Err("Failed to open asset '{}'", path);
     }
 
-    m_size = s.st_size;
-    auto ptr = mmap(nullptr, m_size, PROT_READ, MAP_PRIVATE, m_fd, 0);
-    if (ptr == MAP_FAILED) {
-        return Err("Failed to mmap file '{}', errno: {}", m_fd, errno);
+    off64_t start, length;
+    int fd = AAsset_openFileDescriptor64(asset.get(), &start, &length);
+    bool canMap = false;
+
+    if (fd >= 0) {
+        canMap = true;
+        close(fd);
     }
 
-    m_ptr = (uint8_t*)ptr;
-    return Ok();
-}
-
-void FileMappedBuffer::_destroy() {
-    if (m_ptr) {
-        munmap(m_ptr, m_size);
-    }
-
-    if (m_fd != INVALID_FD) {
-        close(m_fd);
-    }
-
-    m_fd = INVALID_FD;
-    m_ptr = nullptr;
-    m_size = 0;
+    return Ok(FileMetadata {
+        .canMap = canMap,
+        .size = static_cast<size_t>(AAsset_getLength64(asset.get()))
+    });
 }
 
 $on_mod(Loaded) {

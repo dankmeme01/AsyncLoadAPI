@@ -1,15 +1,16 @@
 #import <Foundation/Foundation.h>
 #include <Geode/Geode.hpp>
 #include <AsyncLoad/FileUtils.hpp>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <cerrno>
+#include <asp/fs.hpp>
 
 using namespace geode::prelude;
 
 namespace AsyncLoad {
+
+static bool isRegularFile(NSString* p) {
+    BOOL isDir = NO;
+    return [[NSFileManager defaultManager] fileExistsAtPath:p isDirectory:&isDir] && !isDir;
+}
 
 // CCFileUtils::isFileExist on MacOS will always return false if the path is a
 // relative path that does not contain any slashes, so we reimplement it properly.
@@ -21,7 +22,7 @@ bool impl::fileExists(ZStringView path) {
 
     if (view[0] == '/') {
         // absolute path
-        return [[NSFileManager defaultManager] fileExistsAtPath:[NSString stringWithUTF8String:path.c_str()]];
+        return isRegularFile([NSString stringWithUTF8String:path.c_str()]);
     }
 
     StringBuffer<512> pathBuf;
@@ -38,7 +39,7 @@ bool impl::fileExists(ZStringView path) {
     NSString* nsfile = [NSString stringWithUTF8String:fileBuf.c_str()];
     NSString* fullpath = [[NSBundle mainBundle] pathForResource:nsfile ofType:nil inDirectory:nspath];
 
-    return fullpath != nil;
+    return fullpath && isRegularFile(fullpath);
 }
 
 std::string getPathForDirAndFilenameImpl(ZStringView directory, ZStringView filename) {
@@ -99,46 +100,16 @@ Result<OwnedBuffer> impl::getFileDataOwned(ZStringView path) {
 // mmap implementation
 
 Result<FileMappedBuffer> impl::getMappedFile(ZStringView path) {
-    if (!canMapFile(path, true)) {
-        return Err("File '{}' cannot be memory mapped, it is not a file on disk", path);
-    }
-
-    int fd = open(path.c_str(), O_RDONLY);
-    if (fd == -1) {
-        return Err("Failed to open file '{}', errno: {}", path, errno);
-    }
-
-    return FileMappedBuffer::createWithFd(fd);
+    auto file = GEODE_UNWRAP(asp::fs::File::open(path.view()));
+    return FileMappedBuffer::createWithFile(std::move(file));
 }
 
-bool canMapFile(geode::ZStringView path, bool assumeFullPath) {
-    return true;
-}
-
-Result<> FileMappedBuffer::_map() {
-    struct stat s;
-    if (fstat(m_fd, &s) == -1) {
-        return Err("Failed to stat file '{}', errno: {}", m_fd, errno);
-    }
-
-    m_size = s.st_size;
-    auto ptr = mmap(nullptr, m_size, PROT_READ, MAP_PRIVATE, m_fd, 0);
-    if (ptr == MAP_FAILED) {
-        return Err("Failed to mmap file '{}', errno: {}", m_fd, errno);
-    }
-
-    m_ptr = (uint8_t*)ptr;
-    return Ok();
-}
-
-void FileMappedBuffer::_destroy() {
-    if (m_ptr) {
-        munmap(m_ptr, m_size);
-    }
-
-    if (m_fd != INVALID_FD) {
-        close(m_fd);
-    }
+Result<FileMetadata> impl::getFileMetadata(geode::ZStringView path) {
+    auto meta = GEODE_UNWRAP(asp::fs::PathView{path.view()}.metadata());
+    return Ok(FileMetadata {
+        .canMap = meta.isFile(),
+        .size = meta.size
+    });
 }
 
 }

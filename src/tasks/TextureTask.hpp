@@ -1,6 +1,7 @@
 #pragma once
 #include "TaskImpl.hpp"
 #include <AsyncLoad/Manager.hpp>
+#include <AsyncLoad/FileUtils.hpp>
 #include <AsyncLoad/util/FileMappedBuffer.hpp>
 
 namespace AsyncLoad {
@@ -29,8 +30,10 @@ struct TextureTask final : CrtpTask<TextureTask, geode::Ref<cocos2d::CCTexture2D
 
     State m_state;
     asp::BoxedString m_path;
+    std::optional<FileMetadata> m_fileMetadata;
     std::variant<CachedBufferChunk, FileMappedBuffer> m_imageData; // bytes in an arbitrary image format
     std::optional<RawImage> m_image;
+    std::optional<PendingBudgetGrant> m_memoryBudgetGrant;
     GLuint m_glTex = 0;
     SmartPBO m_glPbo;
     void* m_mappedPboPtr = nullptr;

@@ -12,6 +12,8 @@ namespace AsyncLoad {
 /// Rewrite of CCFileUtils::isFileExist that does not open any files, is fast and correct,
 /// unlike cocos which may fail and return false on relative paths on apple.
 ///
+/// This is for files specifically, it will fail for directories but will follow symlinks.
+///
 /// Note: this requires the path to be a full path already (not necessarily absolute, but a result of `fullPathForFilename`).
 AL_EVENT_EXPORT(bool, fileExists, (geode::ZStringView path), (path));
 
@@ -53,11 +55,17 @@ AL_EVENT_EXPORT(geode::Result<FileMappedBuffer>, getMappedFile, (
     bool assumeFullPath = false
 ), (path, assumeFullPath));
 
-/// Returns whether the file at the given path can be memory mapped, and `getMappedFile` may succeed.
-/// This does NOT guarantee it actually *will* succeed, and it does not check actual path existence.
-///
-/// Right now, this function is equivalent to checking if the file is NOT in APK assets on Android, and simply returns `true` on other platforms.
-AL_EVENT_EXPORT(bool, canMapFile, (
+struct FileMetadata {
+    /// Whether the file can be mmapped, and `getMappedFile` is *expected to* succeed.
+    /// This will be true for most assets on most platforms, like `.png` files.
+    /// It's only false on Android for assets that are compressed in the APK file.
+    bool canMap;
+    /// Size of the file in bytes
+    size_t size;
+};
+
+/// Returns the metadata of the file, or an error if the file is not found
+AL_EVENT_EXPORT(geode::Result<FileMetadata>, getFileMetadata, (
     geode::ZStringView path,
     bool assumeFullPath = false
 ), (path, assumeFullPath));
@@ -99,6 +107,7 @@ struct FileUtilsProvider {
     using GetFileDataFn = geode::Result<CachedBufferChunk>(*)(geode::ZStringView);
     using GetFileDataOwnedFn = geode::Result<OwnedBuffer>(*)(geode::ZStringView);
     using GetMappedFileFn = geode::Result<FileMappedBuffer>(*)(geode::ZStringView);
+    using GetFileMetadataFn = geode::Result<FileMetadata>(*)(geode::ZStringView);
 
     size_t _size = sizeof(FileUtilsProvider);
 
@@ -112,6 +121,8 @@ struct FileUtilsProvider {
     GetFileDataOwnedFn getFileDataOwned{};
     /// Function called to get file data by the given full path, using memory mapped io
     GetMappedFileFn getMappedFile{};
+    /// Function called to get file metadata by the given full path
+    GetFileMetadataFn getFileMetadata{};
 };
 
 /// Sets the provider that controls different file related operations.
@@ -127,6 +138,7 @@ namespace impl {
     AL_DLL geode::Result<CachedBufferChunk> getFileData(geode::ZStringView path);
     AL_DLL geode::Result<OwnedBuffer> getFileDataOwned(geode::ZStringView path);
     AL_DLL geode::Result<FileMappedBuffer> getMappedFile(geode::ZStringView path);
+    AL_DLL geode::Result<FileMetadata> getFileMetadata(geode::ZStringView path);
 }
 
 AL_EVENT_EXPORT(size_t, getFPFFCacheHits, (), ());

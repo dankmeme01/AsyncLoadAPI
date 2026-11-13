@@ -29,6 +29,17 @@ struct ALManager::Impl : CCObject {
 
     std::vector<SmartPBO> m_pbos;
 
+    struct MemoryWaiter {
+        std::shared_ptr<detail::TaskControlBase> task;
+        std::shared_ptr<PendingBudgetGrant::State> grantState;
+        uint64_t amount;
+    };
+    struct MemoryBudget {
+        uint64_t value;
+        std::deque<MemoryWaiter> waiters;
+    };
+    asp::Mutex<MemoryBudget> m_memoryBudget;
+
     Impl();
     ~Impl();
 

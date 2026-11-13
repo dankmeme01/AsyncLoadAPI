@@ -16,6 +16,11 @@ def main(build: Build):
     build.add_source_dir("src/util/*.cpp")
     build.add_source_dir(f"src/platform/{config.platform.platform_str(False)}/")
 
+    if config.platform.is_apple():
+        build.add_source_dir("src/platform/shared_apple")
+    if not config.platform.is_windows():
+        build.add_source_dir("src/platform/shared_unix")
+
     build.enable_mod_json_generation("mod.template.json")
     assert build.mod_json
 
@@ -29,8 +34,6 @@ def main(build: Build):
         "cmake/DependencyMain.cmake"
     ]
 
-    if config.platform.is_apple():
-        build.add_source_dir("src/platform/shared_apple")
 
     if not config.platform.is_apple():
         build.add_cpm_dep("zeux/pugixml", "v1.15", link_name="pugixml-static", options={"PUGIXML_NO_EXCEPTIONS": "ON"})

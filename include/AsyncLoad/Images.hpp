@@ -46,6 +46,10 @@ struct AL_DLL RawImage {
     AL_EVENT_EXPORT_MEMBER_STATIC(geode::Result<RawImage>, create, (std::span<const uint8_t> data), (data));
     /// Converts a CCImage into a RawImage, which will copy all the data.
     AL_EVENT_EXPORT_MEMBER_STATIC(geode::Result<RawImage>, create, (cocos2d::CCImage* image, bool takeOwnership = false), (image, takeOwnership));
+
+    /// Returns the size, in bytes, of the image after decoding and optional widening. This is width * height * 4
+    /// This only works for PNG files.
+    AL_EVENT_EXPORT_MEMBER_STATIC(std::optional<uint64_t>, getDecodedSize, (std::span<const uint8_t> data), (data));
 };
 
 }

@@ -20,6 +20,9 @@ ALManager::Impl::Impl() {
         t.setName("AsyncLoad worker thread");
         t.start();
     }
+
+    // use 500mb as the cap for memory used during processing
+    m_memoryBudget.lock()->value = 500 * 1024 * 1024;
 }
 
 ALManager::Impl::~Impl() {

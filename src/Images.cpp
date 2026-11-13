@@ -282,4 +282,42 @@ Result<RawImage> RawImage::create(std::span<const uint8_t> data) {
     });
 }
 
+static uint32_t readu32(const uint8_t* p) {
+    return std::byteswap(*(uint32_t*)p);
+}
+
+std::optional<uint64_t> RawImage::getDecodedSize(std::span<const uint8_t> data) {
+    uint8_t sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    if (data.size() < 8 || std::memcmp(data.data(), sig, 8) != 0) {
+        return std::nullopt;
+    }
+
+    size_t off = 8;
+    while (off + 8 <= data.size()) {
+        uint32_t len = readu32(data.data() + off);
+        const uint8_t* type = data.data() + off + 4;
+
+        if (std::memcmp(type, "IHDR", 4) == 0) {
+            // IHDR chunk with width and height
+            if (len < 13 || off + 21 > data.size()) {
+                return std::nullopt;
+            }
+
+            auto width = readu32(type + 4);
+            auto height = readu32(type + 8);
+            auto bitDepth = type[12];
+
+            return (uint64_t)width * height * 4;
+        }
+
+        if (len > data.size() - off - 12) {
+            return std::nullopt;
+        }
+
+        off += 12 + len;
+    }
+
+    return std::nullopt;
+}
+
 }

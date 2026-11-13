@@ -1,117 +1,104 @@
 #include <AsyncLoad/FileUtils.hpp>
+#include <asp/fs.hpp>
 #include <Windows.h>
 
 using namespace geode::prelude;
 
 namespace AsyncLoad {
 
-static Result<std::pair<HANDLE, LARGE_INTEGER>> doOpen(ZStringView path) {
-    HANDLE file = CreateFileA(
-        path.c_str(),
-        GENERIC_READ,
-        FILE_SHARE_READ,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr
-    );
-
-    if (file == INVALID_HANDLE_VALUE) {
-        return Err("Failed to open file '{}', error: {}", path, GetLastError());
-    }
-
-    LARGE_INTEGER filesize;
-    if (!GetFileSizeEx(file, &filesize)) {
-        CloseHandle(file);
-        return Err("Failed to get file size for '{}', error: {}", path, GetLastError());
-    }
-    return Ok(std::make_pair(file, filesize));
-}
-
 bool impl::fileExists(ZStringView path) {
-    auto attrs = GetFileAttributesA(path.c_str());
-    return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
+    asp::fs::PathView p{path.view()};
+    auto meta = p.metadata();
+    return meta && meta.unwrap().isFile();
 }
 
 Result<CachedBufferChunk> impl::getFileData(ZStringView path) {
-    auto [file, filesize] = GEODE_UNWRAP(doOpen(path));
+    auto file = GEODE_UNWRAP(asp::fs::File::open(path.view()));
+    auto size = GEODE_UNWRAP(file.size());
 
-    auto buffer = BufferCache::get().getSized(filesize.QuadPart);
-    DWORD bytesRead;
-    if (!ReadFile(file, buffer.data(), filesize.QuadPart, &bytesRead, nullptr) || bytesRead != filesize.QuadPart) {
-        CloseHandle(file);
-        return Err("Failed to read file '{}', error: {}", path, GetLastError());
-    }
+    auto buffer = BufferCache::get().getSized(size);
+    GEODE_UNWRAP(file.readExact(std::span{buffer.data(), size}));
 
-    CloseHandle(file);
     return Ok(std::move(buffer));
 }
 
 Result<OwnedBuffer> impl::getFileDataOwned(ZStringView path) {
-    auto [file, filesize] = GEODE_UNWRAP(doOpen(path));
+    auto file = GEODE_UNWRAP(asp::fs::File::open(path.view()));
+    auto size = GEODE_UNWRAP(file.size());
 
-    auto buffer = std::make_unique_for_overwrite<uint8_t[]>(filesize.QuadPart);
-    DWORD bytesRead;
-    if (!ReadFile(file, buffer.get(), filesize.QuadPart, &bytesRead, nullptr) || bytesRead != filesize.QuadPart) {
-        CloseHandle(file);
-        return Err("Failed to read file '{}', error: {}", path, GetLastError());
-    }
+    auto buffer = std::make_unique_for_overwrite<uint8_t[]>(size);
+    GEODE_UNWRAP(file.readExact(std::span{buffer.get(), size}));
 
-    CloseHandle(file);
     return Ok(OwnedBuffer {
         std::move(buffer),
-        static_cast<size_t>(filesize.QuadPart)
+        static_cast<size_t>(size)
     });
 }
 
 Result<FileMappedBuffer> impl::getMappedFile(ZStringView path) {
-    HANDLE file = CreateFileA(
-        path.c_str(),
-        GENERIC_READ,
-        FILE_SHARE_READ,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_FLAG_SEQUENTIAL_SCAN,
-        nullptr
-    );
-
-    if (file == INVALID_HANDLE_VALUE) {
-        return Err("Failed to open file '{}', error: {}", path, GetLastError());
-    }
-
-    return FileMappedBuffer::createWithFd(file);
+    auto file = GEODE_UNWRAP(asp::fs::File::open(path.view()));
+    return FileMappedBuffer::createWithFile(std::move(file));
 }
 
-bool canMapFile(geode::ZStringView path, bool assumeFullPath) {
-    return true;
+Result<FileMetadata> impl::getFileMetadata(geode::ZStringView path) {
+    auto meta = GEODE_UNWRAP(asp::fs::PathView{path.view()}.metadata());
+    return Ok(FileMetadata {
+        .canMap = meta.isFile(),
+        .size = meta.size
+    });
 }
 
-Result<> FileMappedBuffer::_map() {
-    LARGE_INTEGER fsize;
-    if (!GetFileSizeEx(m_fd, &fsize)) {
-        return Err("Failed to get file size, error: {}", m_fd, GetLastError());
+Result<> FileMappedBuffer::_map(std::optional<size_t> offset, std::optional<size_t> size) {
+    if (size) {
+        m_size = *size;
+    } else {
+        m_size = GEODE_UNWRAP(m_file.size());
     }
 
-    m_size = fsize.QuadPart;
+    if (m_size == 0) {
+        return Ok();
+    }
 
-    auto mapping = CreateFileMapping(m_fd, nullptr, PAGE_READONLY, 0, 0, nullptr);
+    static size_t granularity = [] {
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        return si.dwAllocationGranularity;
+    }();
+
+    size_t off = offset.value_or(0);
+    size_t delta = off % granularity;
+    size_t mapLen = m_size + delta;
+
+    auto mapping = CreateFileMapping(m_file.fd(), nullptr, PAGE_READONLY, 0, 0, nullptr);
     if (!mapping) {
         return Err("Failed to create file mapping, error: {}", GetLastError());
     }
 
-    m_ptr = (uint8_t*)MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+    LARGE_INTEGER offsetli;
+    offsetli.QuadPart = off - delta;
+    auto base = (uint8_t*)MapViewOfFile(mapping, FILE_MAP_READ, offsetli.HighPart, offsetli.LowPart, mapLen);
     CloseHandle(mapping);
+
+    if (!base) {
+        return Err("Failed to map view of file, error: {}", GetLastError());
+    }
+
+    m_mapBase = base;
+    m_mapLen = mapLen;
+    m_ptr = base + delta;
+
     return Ok();
 }
 
 void FileMappedBuffer::_destroy() {
-    if (m_ptr) {
-        UnmapViewOfFile(m_ptr);
+    if (m_mapBase) {
+        UnmapViewOfFile(m_mapBase);
     }
 
-    if (m_fd != INVALID_FD) {
-        CloseHandle(m_fd);
-    }
+    m_ptr = nullptr;
+    m_size = 0;
+    m_mapBase = nullptr;
+    m_mapLen = 0;
 }
 
 }

@@ -51,7 +51,7 @@ TaskHandle ALManager::loadTextureInner(std::string_view path, TextureLoadParams:
 
     auto cachedTex = static_cast<CCTexture2D*>(tc->m_pTextures->objectForKey(fp));
     if (cachedTex) {
-        AL_TRACE("loadTexture: cache hit for {}", fp);
+        AL_TRACE("loadTexture: cache hit for '{}'", fp);
 
         if (eager) {
             callback(Ok(cachedTex));
@@ -69,6 +69,7 @@ TaskHandle ALManager::loadTextureInner(std::string_view path, TextureLoadParams:
         return task;
     }
 
+    AL_TRACE_NOISY("loadTexture: creating task for texture '{}'", fp);
     return m_impl->createAndSubmitTask<TextureTask>(
         [cb = std::move(callback), fp, tc](auto result) mutable {
             if (!result) return cb(std::move(result));
@@ -185,6 +186,60 @@ void ALManager::returnPBO(SmartPBO pbo) {
 #endif
 }
 
+std::optional<BudgetGrant> ALManager::requestMemoryBudget(uint64_t bytes) {
+    auto budget = m_impl->m_memoryBudget.lock();
+    if (!budget->waiters.empty()) {
+        // can't serve request, there are already waiters
+        return std::nullopt;
+    }
+
+    if (budget->value >= bytes) {
+        budget->value -= bytes;
+        return BudgetGrant{bytes};
+    }
+
+    return std::nullopt;
+}
+
+PendingBudgetGrant ALManager::requestMemoryBudgetOrWait(uint64_t bytes, TaskHandle handle) {
+    auto budget = m_impl->m_memoryBudget.lock();
+    if (budget->waiters.empty() && budget->value >= bytes) {
+        budget->value -= bytes;
+        return PendingBudgetGrant{std::make_shared<PendingBudgetGrant::State>(
+            BudgetGrant{bytes}
+        )};
+    }
+
+    // park this task
+    auto grantState = std::make_shared<PendingBudgetGrant::State>();
+    budget->waiters.push_back({
+        .task = std::move(handle.m_ctl),
+        .grantState = grantState,
+        .amount = bytes
+    });
+
+    return PendingBudgetGrant{grantState};
+}
+
+void ALManager::_returnMemoryBudget(uint64_t value) {
+    auto budget = m_impl->m_memoryBudget.lock();
+    budget->value += value;
+
+    // wake up any waiters that can be satisfied
+    while (!budget->waiters.empty()) {
+        auto& waiter = budget->waiters.front();
+        if (budget->value < waiter.amount) {
+            break;
+        }
+
+        budget->value -= waiter.amount;
+        waiter.grantState->grant = BudgetGrant{waiter.amount};
+
+        m_impl->resumeTask(waiter.task->m_id, false);
+        budget->waiters.pop_front();
+    }
+}
+
 void ALManager::lendMainThread() {
     m_impl->update(0.f);
 }
@@ -203,7 +258,7 @@ Result<> loadTexture(
 }
 
 Result<> preload(std::string_view path) {
-    ALManager::get().loadTexture(path, [](auto) {});
+    ALManager::get().loadTextureEager(path, [](auto) {});
     return Ok();
 }
 

@@ -8,13 +8,6 @@ using namespace geode::prelude;
 
 namespace AsyncLoad {
 
-namespace impl {
-    bool fileExists(ZStringView path);
-    Result<CachedBufferChunk> getFileData(ZStringView path);
-    Result<OwnedBuffer> getFileDataOwned(ZStringView path);
-    Result<FileMappedBuffer> getMappedFile(ZStringView path);
-}
-
 static FileUtilsProvider* defaultProvider() {
     auto p = new FileUtilsProvider();
     p->exists = &impl::fileExists;
@@ -22,6 +15,7 @@ static FileUtilsProvider* defaultProvider() {
     p->getFileData = &impl::getFileData;
     p->getFileDataOwned = &impl::getFileDataOwned;
     p->getMappedFile = &impl::getMappedFile;
+    p->getFileMetadata = &impl::getFileMetadata;
     return p;
 }
 
@@ -55,7 +49,8 @@ void setFileUtilsProvider(FileUtilsProvider* provider) {
         &FileUtilsProvider::clearCache,
         &FileUtilsProvider::getFileData,
         &FileUtilsProvider::getFileDataOwned,
-        &FileUtilsProvider::getMappedFile
+        &FileUtilsProvider::getMappedFile,
+        &FileUtilsProvider::getFileMetadata
     );
 
     // ignore previous value, there is no feasible way to safely free it without locks
@@ -404,6 +399,20 @@ Result<FileMappedBuffer> getMappedFile(
 
     auto p = fullPathForFilename(path);
     return prov->getMappedFile(p);
+}
+
+Result<FileMetadata> getFileMetadata(geode::ZStringView path, bool assumeFullPath) {
+    if (path.empty()) {
+        return Err("Empty path passed to getFileMetadata");
+    }
+
+    auto prov = provider();
+    if (assumeFullPath) {
+        return prov->getFileMetadata(path);
+    }
+
+    auto p = fullPathForFilename(path);
+    return prov->getFileMetadata(p);
 }
 
 std::shared_ptr<std::vector<std::string>> getSearchPaths() {

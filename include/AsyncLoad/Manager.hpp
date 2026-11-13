@@ -98,6 +98,41 @@ struct LoadedSpritesheet {
     std::vector<geode::Ref<cocos2d::CCTexture2D>> candidateTextures;
 };
 
+struct BudgetGrant {
+    ~BudgetGrant() {
+        this->_return();
+    }
+
+    BudgetGrant(BudgetGrant&& other) noexcept : m_value(std::exchange(other.m_value, 0)) {}
+    BudgetGrant& operator=(BudgetGrant&& other) noexcept {
+        if (this != &other) {
+            this->_return();
+            m_value = std::exchange(other.m_value, 0);
+        }
+        return *this;
+    }
+
+private:
+    uint64_t m_value;
+    friend class ALManager;
+
+    BudgetGrant(uint64_t value) : m_value(value) {}
+
+    void _return();
+};
+
+struct PendingBudgetGrant {
+    struct State {
+        std::optional<BudgetGrant> grant;
+    };
+
+    std::shared_ptr<State> grant;
+
+    bool fulfilled() const {
+        return grant->grant.has_value();
+    }
+};
+
 #ifdef AL_CAN_LINK
 
 class AL_DLL ALManager final {
@@ -183,6 +218,10 @@ public:
     SmartPBO requestPBO(size_t capacity);
     void returnPBO(SmartPBO pbo);
 
+    std::optional<BudgetGrant> requestMemoryBudget(uint64_t bytes);
+    PendingBudgetGrant requestMemoryBudgetOrWait(uint64_t bytes, TaskHandle handle);
+    void _returnMemoryBudget(uint64_t value);
+
 private:
     std::unique_ptr<Impl> m_impl;
 
@@ -193,6 +232,11 @@ private:
 };
 
 #endif
+
+inline void BudgetGrant::_return() {
+    if (m_value) ALManager::get()._returnMemoryBudget(m_value);
+    m_value = 0;
+}
 
 // The functions below are for the event based API, which can be used without linking to the mod, unlike ALManager
 
@@ -206,6 +250,7 @@ AL_EVENT_EXPORT(geode::Result<>, loadTexture, (
 ), (path, std::move(callback), fullPath));
 
 /// Asynchronously loads the texture by the given path (must be a `.png` file) and puts it into `CCTextureCache`.
+/// The path need not to be a full path, if it's a relative path it will be resolved using fullPathForFilename.
 /// If the texture is already cached, succeeds and does nothing. If the mod is not loaded, returns an error.
 /// If the texture fails to load, the error is swallowed. To be able to handle errors or know when the texture finishes loading,
 /// use `loadTexture` instead.

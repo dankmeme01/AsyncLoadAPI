@@ -70,6 +70,13 @@ TextureTask::~TextureTask() {
     }
 }
 
+static std::string maybeFullPath(std::string_view p, bool isFull) {
+    if (isFull) {
+        return std::string{p};
+    } else {
+        return fullPathForFilename(p);
+    }
+}
 
 TaskAdvanceResult TextureTask::advance(bool mainThread) {
     if (!this->shouldRun()) return TaskAdvanceResult::Finished;
@@ -78,16 +85,30 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
         case State::PreImageRead: {
             auto in = asp::Instant::now();
 
+            auto path = maybeFullPath(m_path, m_pathIsFull);
+            if (path.empty()) {
+                this->fail(fmt::format("could not find full path for '{}'", m_path));
+                return TaskAdvanceResult::Finished;
+            }
+
+            auto res = getFileMetadata(path, true);
+            if (!res) {
+                this->fail(fmt::format("failed to get file metadata: {}", res.unwrapErr()));
+                return TaskAdvanceResult::Finished;
+            }
+
+            m_fileMetadata = std::move(*res);
+
             // use memory mapping whenever possible
-            if (canMapFile(m_path.c_str())) {
-                auto res = getMappedFile(m_path.c_str(), m_pathIsFull);
+            if (m_fileMetadata->canMap) {
+                auto res = getMappedFile(path, true);
                 if (!res) {
                     this->fail(fmt::format("failed to read image file (mapped mode): {}", res.unwrapErr()));
                     return TaskAdvanceResult::Finished;
                 }
                 m_imageData = std::move(*res);
             } else {
-                auto res = getFileData(m_path.c_str(), m_pathIsFull);
+                auto res = getFileData(path, true);
                 if (!res) {
                     this->fail(fmt::format("failed to read image file: {}", res.unwrapErr()));
                     return TaskAdvanceResult::Finished;
@@ -95,7 +116,7 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
                 m_imageData = std::move(*res);
             }
 
-            AL_TRACE_NOISY("Image read finished in {}", in.elapsed());
+            AL_TRACE_NOISY("Image read finished in {} (mmap: {}, size: {})", in.elapsed(), m_fileMetadata->canMap, m_fileMetadata->size);
             m_state = State::ImageRead;
         } break;
 
@@ -105,6 +126,25 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
                 data = std::get<CachedBufferChunk>(m_imageData).span();
             } else if (std::holds_alternative<FileMappedBuffer>(m_imageData)) {
                 data = std::get<FileMappedBuffer>(m_imageData).span();
+            }
+
+            size_t decodedSizeGuess = 0;
+            if (auto opt = RawImage::getDecodedSize(data)) {
+                decodedSizeGuess = *opt;
+            } else {
+                // we have nothing to go off of, we can only make a guess based on file size
+                decodedSizeGuess = m_fileMetadata->size * 4;
+            }
+
+            // request a budget grant
+            if (!m_memoryBudgetGrant) {
+                m_memoryBudgetGrant = ALManager::get().requestMemoryBudgetOrWait(decodedSizeGuess, this->handle());
+            }
+
+            // suspend if we did not get the grant yet
+            if (!m_memoryBudgetGrant->fulfilled()) {
+                log::debug("not enough memory to load '{}' (want {} bytes), suspending task", m_path, decodedSizeGuess);
+                return TaskAdvanceResult::Suspend;
             }
 
             auto res = RawImage::create(data);
