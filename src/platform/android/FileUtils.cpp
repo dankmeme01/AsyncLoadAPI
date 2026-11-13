@@ -82,7 +82,7 @@ static Result<CachedBufferChunk> openAndReadDisk(const char* path) {
     auto size = GEODE_UNWRAP(file.size());
 
     auto buffer = BufferCache::get().getSized(size);
-    GEODE_UNWRAP(file.readExact(std::span{buffer.data(), size}));
+    GEODE_UNWRAP(file.readExact(std::span(buffer.data(), size)));
 
     return Ok(std::move(buffer));
 }
@@ -92,7 +92,7 @@ static Result<OwnedBuffer> openAndReadDiskOwned(const char* path) {
     auto size = GEODE_UNWRAP(file.size());
 
     auto buffer = std::make_unique_for_overwrite<uint8_t[]>(size);
-    GEODE_UNWRAP(file.readExact(std::span{buffer.get(), size}));
+    GEODE_UNWRAP(file.readExact(std::span(buffer.get(), size)));
 
     return Ok(OwnedBuffer {
         std::move(buffer),

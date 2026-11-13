@@ -28,9 +28,12 @@ Result<PngDecoder> PngDecoder::create(std::span<const uint8_t> data, PngDecodeMo
     out.m_width = ihdr.width;
     out.m_height = ihdr.height;
 
-    if (spng_decoded_image_size(ctx, SPNG_FMT_RGBA8, &out.m_totalSize) != 0) {
+    size_t totalSize = 0;
+    if (spng_decoded_image_size(ctx, SPNG_FMT_RGBA8, &totalSize) != 0) {
         return Err("Failed to get decoded image size");
     }
+
+    out.m_totalSize = totalSize;
 
     if (mode == PngDecodeMode::Streaming) {
         if (spng_decode_image(ctx, nullptr, 0, SPNG_FMT_RGBA8, SPNG_DECODE_PROGRESSIVE | SPNG_DECODE_TRNS) != 0) {

@@ -61,7 +61,7 @@ struct FileMetadata {
     /// It's only false on Android for assets that are compressed in the APK file.
     bool canMap;
     /// Size of the file in bytes
-    size_t size;
+    uint64_t size;
 };
 
 /// Returns the metadata of the file, or an error if the file is not found
