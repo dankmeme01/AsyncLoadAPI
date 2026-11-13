@@ -23,3 +23,14 @@ add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 
 CPMAddPackage("gh:dankmeme01/geobuild#v2")
 include("${CMAKE_CURRENT_BINARY_DIR}/geobuild-gen.cmake")
+
+# spng has annoying cmake, so compile it ourselves
+CPMAddPackage(
+    NAME spng
+    GITHUB_REPOSITORY "randy408/libspng"
+    GIT_TAG "v0.7.4"
+    DOWNLOAD_ONLY ON
+)
+target_sources(AsyncLoad PRIVATE "${CPM_PACKAGE_spng_SOURCE_DIR}/spng/spng.c")
+target_include_directories(AsyncLoad PRIVATE "${CPM_PACKAGE_spng_SOURCE_DIR}/spng")
+target_compile_definitions(AsyncLoad PRIVATE SPNG_STATIC)

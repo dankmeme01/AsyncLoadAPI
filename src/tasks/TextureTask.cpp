@@ -1,9 +1,12 @@
 #include "TextureTask.hpp"
 #include <AsyncLoad/FileUtils.hpp>
 #include <Geode/utils/terminate.hpp>
+#include <util/Setting.hpp>
 #include <OpenGL.hpp>
 
 using namespace geode::prelude;
+
+static constexpr size_t STREAMING_DECODE_BUFFER_SIZE = 512 * 1024;
 
 #ifdef AL_DEBUG
 # define AL_BENCHMARK(code) \
@@ -20,28 +23,30 @@ using namespace geode::prelude;
     } while (0)
 #endif
 
-static bool shouldUsePBO() {
-    static bool should = g_opengl.supportsPBO && Mod::get()->getSettingValue<bool>("use-pbos");
-    return should;
-}
-
-static bool shouldUseAsyncPBO() {
-    static bool should = shouldUsePBO() && Mod::get()->getSettingValue<bool>("use-async-pbo");
-    return should;
-}
 
 namespace AsyncLoad {
+
+static bool shouldUsePBO() {
+    static bool should = g_opengl.supportsPBO && getSettingFast<"use-pbos", bool>();
+    return should;
+}
+
+static bool shouldUseStreamingDecode() {
+    static bool should = shouldUsePBO() && getSettingFast<"use-streaming-decode", bool>();
+    return should;
+}
+
 TextureTask::TextureTask(TextureLoadParams&& params, bool joinable, std::shared_ptr<Control> ctl) : CrtpTask(std::move(ctl)) {
     m_joinable = joinable;
 
     if (params.rawImage) {
         // user provided a raw image, no need to read any files
-        m_state = State::ImageDecoded;
+        m_state = State::RawImageReady;
         m_image = std::move(params.rawImage);
         return;
     } else if (params.image) {
         // user provided a CCImage, same deal
-        m_state = State::ImageDecoded;
+        m_state = State::RawImageReady;
 
         auto res = RawImage::create(params.image);
         if (!res) {
@@ -121,22 +126,27 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
         } break;
 
         case State::ImageRead: {
-            std::span<const uint8_t> data;
-            if (std::holds_alternative<CachedBufferChunk>(m_imageData)) {
-                data = std::get<CachedBufferChunk>(m_imageData).span();
-            } else if (std::holds_alternative<FileMappedBuffer>(m_imageData)) {
-                data = std::get<FileMappedBuffer>(m_imageData).span();
+            auto data = this->getImageData();
+
+            if (shouldUseStreamingDecode()) {
+                auto res = PngDecoder::create(data, PngDecodeMode::Streaming);
+                if (res) {
+                    m_decoder = std::move(*res);
+                    m_state = State::StreamDecoderReady;
+                    return TaskAdvanceResult::RequiresMainThread;
+                }
+
+                AL_TRACE_NOISY("PngDecoder::create failed for '{}': {}", m_path, res.unwrapErr());
             }
 
-            size_t decodedSizeGuess = 0;
-            if (auto opt = RawImage::getDecodedSize(data)) {
-                decodedSizeGuess = *opt;
-            } else {
-                // we have nothing to go off of, we can only make a guess based on file size
-                decodedSizeGuess = m_fileMetadata->size * 4;
+            m_state = State::RawImageBudgetWait;
+
+            // request a budget grant for the memory we will use
+            size_t decodedSizeGuess = data.size() * 8;
+            if (auto pngSize = RawImage::getDecodedSize(data)) {
+                decodedSizeGuess = *pngSize;
             }
 
-            // request a budget grant
             if (!m_memoryBudgetGrant) {
                 m_memoryBudgetGrant = ALManager::get().requestMemoryBudgetOrWait(decodedSizeGuess, this->handle());
             }
@@ -147,19 +157,78 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
                 return TaskAdvanceResult::Suspend;
             }
 
+            return TaskAdvanceResult::Pending;
+        } break;
+
+        /// Streaming
+
+        case State::StreamDecoderReady: {
+            AL_DEBUG_ASSERT(m_decoder);
+
+            if (mainThread) {
+                this->startStreamingPBOLoad();
+                // return to the same state but on worker thread instead of main thread
+                return TaskAdvanceResult::Pending;
+            }
+
+            size_t imageSize = m_decoder->totalSize();
+            size_t height = m_decoder->height();
+            size_t rowByteSize = m_decoder->width() * 4;
+            // sanity check
+            AL_DEBUG_ASSERT(imageSize == rowByteSize * m_decoder->height());
+
+            auto buffer = BufferCache::get().get(std::max(STREAMING_DECODE_BUFFER_SIZE, rowByteSize));
+            size_t rowsPerChunk = buffer.capacity() / rowByteSize;
+
+            for (size_t row = 0; row < height; row += rowsPerChunk) {
+                size_t rows = std::min(rowsPerChunk, height - row);
+                for (size_t i = 0; i < rows; i++) {
+                    auto res = m_decoder->decodeRow(buffer.data() + i * rowByteSize, rowByteSize);
+                    if (!res) {
+                        this->fail(fmt::format("failed to decode row {}: {}", i, res.unwrapErr()));
+                        return TaskAdvanceResult::Finished;
+                    }
+
+                }
+
+                // flush this chunk out into the pbo
+                size_t offset = row * rowByteSize;
+                size_t size = rows * rowByteSize;
+
+                // premultiply
+                premultiplyAlphaInplace(buffer.data(), size);
+
+                std::memcpy((uint8_t*)m_mappedPboPtr + offset, buffer.data(), size);
+            }
+
+            m_state = State::StreamDecoderDone;
+            return TaskAdvanceResult::RequiresMainThread;
+        } break;
+
+        case State::StreamDecoderDone: {
+            this->doFinalizeStreamingPBO();
+            m_state = State::TextureReady;
+            return TaskAdvanceResult::Finished;
+        } break;
+
+
+        /// RawImage decoding
+
+
+        case State::RawImageBudgetWait: {
+            auto data = this->getImageData();
+
             auto res = RawImage::create(data);
             if (!res) {
                 this->fail(fmt::format("failed to decode image: {}", res.unwrapErr()));
                 return TaskAdvanceResult::Finished;
             }
-            m_imageData = CachedBufferChunk{}; // release buffer
             m_image = std::move(*res);
-            m_image->premultiply();
-            m_state = State::ImageReady;
-            return TaskAdvanceResult::RequiresMainThread;
+            m_state = State::RawImageReady;
+            return TaskAdvanceResult::Pending;
         } break;
 
-        case State::ImageDecoded: {
+        case State::RawImageReady: {
             AL_DEBUG_ASSERT(m_image && "m_image must be set in ImageDecoded state");
             m_image->premultiply();
             m_state = State::ImageReady;
@@ -170,23 +239,28 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
             if (!mainThread) return TaskAdvanceResult::RequiresMainThread;
             AL_DEBUG_ASSERT(m_image && m_image->hasAlpha && m_image->premultiplied && "m_image must have premultiplied alpha in ImageReady state");
 
+            m_imageData = CachedBufferChunk{}; // release buffer
+
             g_opengl.initialize();
 
-            if (shouldUseAsyncPBO()) {
-                return this->startAsyncPBOLoad();
-            } else if (shouldUsePBO()) {
-                return this->startPBOLoad();
+            if (shouldUsePBO()) {
+                this->startAsyncPBOLoad();
+                m_state = State::AsyncPboReady;
+                return TaskAdvanceResult::Pending;
             } else {
-                return this->startNoPBOLoad();
+                this->startNoPBOLoad();
+                return TaskAdvanceResult::Finished;
             }
         } break;
 
         case State::AsyncPboReady: {
-            return this->doWriteIntoAsyncPBO();
+            this->doWriteIntoAsyncPBO();
+            return TaskAdvanceResult::RequiresMainThread;
         } break;
 
         case State::AsyncPboDone: {
-            return this->doFinalizeAsyncPBO();
+            this->doFinalizeAsyncPBO();
+            return TaskAdvanceResult::Finished;
         } break;
 
         default: {
@@ -198,19 +272,19 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
 }
 
 
-Ref<CCTexture2D> TextureTask::finalizeTexture(GLuint num) {
+Ref<CCTexture2D> TextureTask::finalizeTexture(GLuint num, uint32_t width, uint32_t height) {
     auto tex = Ref<CCTexture2D>::adopt(new CCTexture2D());
     tex->m_uName = num;
     tex->m_tContentSize = CCSize {
-        (float)m_image->width,
-        (float)m_image->height,
+        (float)width,
+        (float)height,
     };
-    tex->m_uPixelsWide = m_image->width;
-    tex->m_uPixelsHigh = m_image->height;
-    tex->m_ePixelFormat = m_image->hasAlpha ? kCCTexture2DPixelFormat_RGBA8888 : kCCTexture2DPixelFormat_RGB888;
+    tex->m_uPixelsWide = width;
+    tex->m_uPixelsHigh = height;
+    tex->m_ePixelFormat = kCCTexture2DPixelFormat_RGBA8888;
     tex->m_fMaxS = 1.f;
     tex->m_fMaxT = 1.f;
-    tex->m_bHasPremultipliedAlpha = m_image->premultiplied;
+    tex->m_bHasPremultipliedAlpha = true;
     tex->m_bHasMipmaps = false;
 
     tex->setShaderProgram(CCShaderCache::sharedShaderCache()->programForKey(kCCShader_PositionTexture));
@@ -218,10 +292,12 @@ Ref<CCTexture2D> TextureTask::finalizeTexture(GLuint num) {
 }
 
 void TextureTask::preparePBO() {
-    AL_ASSERT(m_image->hasAlpha);
-    int64_t width = m_image->width;
-    int64_t height = m_image->height;
-    int64_t byteSize = m_image->sizeBytes();
+    AL_ASSERT(m_image && m_image->hasAlpha);
+    return this->preparePBO(m_image->width, m_image->height);
+}
+
+void TextureTask::preparePBO(int64_t width, int64_t height) {
+    int64_t byteSize = width * height * 4;
 
     // some cocos code leaves an error for us
     clearGLError();
@@ -257,9 +333,7 @@ void TextureTask::preparePBO() {
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_glPbo.get());
 }
 
-TaskAdvanceResult TextureTask::startAsyncPBOLoad() {
-    AL_BENCHMARK(this->preparePBO());
-    int64_t byteSize = m_image->sizeBytes();
+void TextureTask::mapPBO(size_t byteSize) {
     auto flags = GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT | GL_MAP_UNSYNCHRONIZED_BIT;
     AL_BENCHMARK(m_mappedPboPtr = g_opengl.pglMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, byteSize, flags));
     checkGLDbg("glMapBufferRange");
@@ -275,19 +349,6 @@ TaskAdvanceResult TextureTask::startAsyncPBOLoad() {
     }
 
     m_pboMapped = true;
-    m_state = State::AsyncPboReady;
-
-    return TaskAdvanceResult::Pending;
-}
-
-TaskAdvanceResult TextureTask::doWriteIntoAsyncPBO() {
-    AL_DEBUG_ASSERT(m_mappedPboPtr);
-
-    auto size = m_image->sizeBytes();
-    std::memcpy(m_mappedPboPtr, m_image->data.data(), size);
-
-    m_state = State::AsyncPboDone;
-    return TaskAdvanceResult::RequiresMainThread;
 }
 
 void TextureTask::unmapPBO(bool unbind) {
@@ -306,55 +367,65 @@ void TextureTask::unmapPBO(bool unbind) {
     }
 }
 
-TaskAdvanceResult TextureTask::doFinalizeAsyncPBO() {
+void TextureTask::startAsyncPBOLoad() {
+    AL_BENCHMARK(this->preparePBO());
+    this->mapPBO(m_image->sizeBytes());
+}
+
+void TextureTask::startStreamingPBOLoad() {
+    AL_DEBUG_ASSERT(m_decoder);
+
+    AL_BENCHMARK(this->preparePBO(m_decoder->width(), m_decoder->height()));
+    this->mapPBO(m_decoder->totalSize());
+}
+
+void TextureTask::doWriteIntoAsyncPBO() {
+    AL_DEBUG_ASSERT(m_mappedPboPtr);
+
+    auto size = m_image->sizeBytes();
+    std::memcpy(m_mappedPboPtr, m_image->data.data(), size);
+
+    m_state = State::AsyncPboDone;
+}
+
+void TextureTask::doFinalizeAsyncPBO() {
     AL_BENCHMARK(clearGLError());
     this->unmapPBO(false);
 
     ccGLBindTexture2D(m_glTex);
 
-    int64_t w = m_image->width, h = m_image->height;
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    AL_BENCHMARK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, nullptr));
-    checkGL("glTexSubImage2D");
-
-    // unbind texture & pbo
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    ccGLBindTexture2D(0);
-
-    // return the pbo
-    ALManager::get().returnPBO(std::move(m_glPbo));
-
-    auto texture = this->finalizeTexture(m_glTex);
-    m_glTex = 0;
-
-    this->succeed(std::move(texture));
-    return TaskAdvanceResult::Finished;
+    this->doFinalizePBO(m_image->width, m_image->height);
 }
 
-TaskAdvanceResult TextureTask::startPBOLoad() {
-    AL_BENCHMARK(this->preparePBO());
+void TextureTask::doFinalizeStreamingPBO() {
+    AL_BENCHMARK(clearGLError());
+    this->unmapPBO(false);
 
-    int64_t byteSize = m_image->sizeBytes();
-    AL_BENCHMARK(glBufferSubData(GL_PIXEL_UNPACK_BUFFER, 0, byteSize, m_image->data.data()));
-    checkGLDbg("glBufferSubData");
+    ccGLBindTexture2D(m_glTex);
 
+    this->doFinalizePBO(m_decoder->width(), m_decoder->height());
+
+    m_decoder.reset();
+}
+
+void TextureTask::doFinalizePBO(int64_t width, int64_t height) {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    AL_BENCHMARK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_image->width, m_image->height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr));
+    AL_BENCHMARK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr));
+    checkGL("glTexSubImage2D");
 
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     ccGLBindTexture2D(0);
 
-    auto texture = this->finalizeTexture(m_glTex);
+    auto texture = this->finalizeTexture(m_glTex, width, height);
     m_glTex = 0;
 
     // return the PBO to the manager so it can be reused later
     ALManager::get().returnPBO(std::move(m_glPbo));
 
     this->succeed(std::move(texture));
-    return TaskAdvanceResult::Finished;
 }
 
-TaskAdvanceResult TextureTask::startNoPBOLoad() {
+void TextureTask::startNoPBOLoad() {
     GLuint num = 0;
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -382,21 +453,42 @@ TaskAdvanceResult TextureTask::startNoPBOLoad() {
     // unbind texture
     ccGLBindTexture2D(0);
 
-    this->succeed(this->finalizeTexture(num));
-
-    return TaskAdvanceResult::Finished;
+    this->succeed(this->finalizeTexture(num, m_image->width, m_image->height));
 }
+
 void TextureTask::succeed(Ref<CCTexture2D> texture) {
     AL_ASSERT(texture != nullptr);
 
     m_state = State::TextureReady;
     this->complete(Ok(std::move(texture)));
+
+    // free everything
+    this->freeResources();
 }
 
 void TextureTask::fail(std::string message) {
     m_state = State::Failed;
     this->complete(Err(std::move(message)));
+
+    // free everything
+    this->freeResources();
 }
 
+void TextureTask::freeResources() {
+    m_imageData = CachedBufferChunk{};
+    m_image.reset();
+    m_memoryBudgetGrant.reset();
+    m_decoder.reset();
+}
+
+std::span<const uint8_t> TextureTask::getImageData() const {
+    if (std::holds_alternative<CachedBufferChunk>(m_imageData)) {
+        return std::get<CachedBufferChunk>(m_imageData).span();
+    } else if (std::holds_alternative<FileMappedBuffer>(m_imageData)) {
+        return std::get<FileMappedBuffer>(m_imageData).span();
+    } else {
+        AL_ASSERT(false);
+    }
+}
 
 }

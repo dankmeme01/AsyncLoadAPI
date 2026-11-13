@@ -1,6 +1,7 @@
 #include <AsyncLoad/Images.hpp>
 #include <asp/simd.hpp>
 #include <prevter.imageplus/include/events.hpp>
+#include <util/PngDecoder.hpp>
 
 #ifdef GEODE_IS_WINDOWS
 # include <immintrin.h>
@@ -207,6 +208,10 @@ Result<RawImage> RawImage::create(cocos2d::CCImage* image, bool takeOwneship) {
     });
 }
 
+static bool useImagePlus(std::span<const uint8_t> data) {
+    return imgp::isAvailable();
+}
+
 static bool isCGBI(std::span<const uint8_t> data) {
     // Header of a CgBI image must match:
     // 89 50 4E 47 0D 0A 1A 0A (PNG signature)
@@ -232,26 +237,27 @@ static bool isCGBI(std::span<const uint8_t> data) {
     return true;
 }
 
-static bool useImagePlus(std::span<const uint8_t> data) {
-    if (!imgp::isAvailable()) return false;
-
-#ifdef __APPLE__
-    if (isCGBI(data)) {
-        // CgBI is a proprietary Apple format used for game resources on iOS,
-        // it features premultiplied RGBA streams that cannot be decoded by libpng/libspng which are used in ImagePlus.
-        // thus we must use CCImage for them.
-
-        // TODO: in 2.209 (maybe sooner?), ImagePlus is planning to release CgBI support, so this can be removed.
-        return false;
-    }
-#endif
-
-    return true;
+static bool isPng(std::span<const uint8_t> data) {
+    uint8_t signature[8] = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+    return data.size() >= 8 && std::memcmp(data.data(), signature, 8) == 0;
 }
 
 Result<RawImage> RawImage::create(std::span<const uint8_t> data) {
     if (!useImagePlus(data)) {
-        // no imageplus, just use ccimage
+        // no imageplus, either use our own decoder for pngs or ccimage for other formats
+        if (isPng(data) && !isCGBI(data)) {
+            auto decoder = GEODE_UNWRAP(PngDecoder::create(data, PngDecodeMode::Whole));
+            auto buf = BufferCache::get().get(decoder.totalSize());
+            GEODE_UNWRAP(decoder.decode(buf.data(), buf.capacity()));
+
+            return Ok(RawImage {
+                .data = std::move(buf),
+                .width = decoder.width(),
+                .height = decoder.height(),
+                .hasAlpha = true,
+            });
+        }
+
         auto img = Ref<CCImage>::adopt(new CCImage());
         if (!img->initWithImageData((void*)data.data(), data.size())) {
             return Err("initWithImageData failed");
@@ -282,42 +288,10 @@ Result<RawImage> RawImage::create(std::span<const uint8_t> data) {
     });
 }
 
-static uint32_t readu32(const uint8_t* p) {
-    return std::byteswap(*(uint32_t*)p);
-}
-
 std::optional<uint64_t> RawImage::getDecodedSize(std::span<const uint8_t> data) {
-    uint8_t sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
-    if (data.size() < 8 || std::memcmp(data.data(), sig, 8) != 0) {
-        return std::nullopt;
-    }
-
-    size_t off = 8;
-    while (off + 8 <= data.size()) {
-        uint32_t len = readu32(data.data() + off);
-        const uint8_t* type = data.data() + off + 4;
-
-        if (std::memcmp(type, "IHDR", 4) == 0) {
-            // IHDR chunk with width and height
-            if (len < 13 || off + 21 > data.size()) {
-                return std::nullopt;
-            }
-
-            auto width = readu32(type + 4);
-            auto height = readu32(type + 8);
-            auto bitDepth = type[12];
-
-            return (uint64_t)width * height * 4;
-        }
-
-        if (len > data.size() - off - 12) {
-            return std::nullopt;
-        }
-
-        off += 12 + len;
-    }
-
-    return std::nullopt;
+    return PngDecoder::create(data, PngDecodeMode::Metadata).map([](PngDecoder decoder) {
+        return decoder.totalSize();
+    }).ok();
 }
 
 }

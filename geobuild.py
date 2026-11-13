@@ -38,9 +38,12 @@ def main(build: Build):
     if not config.platform.is_apple():
         build.add_cpm_dep("zeux/pugixml", "v1.15", link_name="pugixml-static", options={"PUGIXML_NO_EXCEPTIONS": "ON"})
 
-    build.add_cpm_dep("greg7mdp/gtl", "v1.2.0", link_name="gtl", options={})
-
-
+    build.add_cpm_dep("greg7mdp/gtl", "v1.2.0", link_name="gtl")
+    build.add_cpm_dep("zlib-ng/zlib-ng", "2.3.3", link_name="zlib-ng-static", options={
+        "BUILD_SHARED_LIBS": "OFF",
+        "BUILD_TESTING": "OFF",
+        "ZLIB_COMPAT": "ON",
+    })
     build.add_definition("GEODE_DEFINE_EVENT_EXPORTS")
 
     # link to opengl stuff & AAssetManager

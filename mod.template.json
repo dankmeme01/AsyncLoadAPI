@@ -19,10 +19,10 @@
             "name": "Use PBOs",
             "description": "Uses OpenGL Pixel Buffer Objects to significantly speed up texture loading. This option has no impact on devices that do not support PBOs."
         },
-        "use-async-pbo": {
+        "use-streaming-decode": {
             "type": "bool",
             "default": true,
-            "name": "Async PBOs"
+            "name": "Streaming Decode"
         },
         "merge-plists": {
             "type": "bool",

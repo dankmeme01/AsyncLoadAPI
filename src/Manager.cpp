@@ -7,6 +7,9 @@
 #include "tasks/TextureTask.hpp"
 #include "tasks/SpriteFramesTask.hpp"
 #include "tasks/SpritesheetTask.hpp"
+#include "OpenGL.hpp"
+
+#include <Geode/modify/LoadingLayer.hpp>
 
 using namespace geode::prelude;
 
@@ -272,10 +275,21 @@ Ref<CCTexture2D> getTexture(std::string_view path) {
     return (CCTexture2D*)CCTextureCache::get()->m_pTextures->objectForKey(fullPath);
 }
 
-}
-
 $on_game(TexturesUnloaded) {
-    auto& m = AsyncLoad::ALManager::Impl::get();
+    auto& m = ALManager::Impl::get();
     m.freePBOs();
     m.cancelAll();
 }
+
+}
+
+class $modify(LoadingLayer) {
+    static void onModify(auto& self) {
+        self.setHookPriority("LoadingLayer::init", -1000000).unwrap();
+    }
+
+    bool init(bool reload) {
+        g_opengl.initialize();
+        return LoadingLayer::init(reload);
+    }
+};

@@ -1,6 +1,6 @@
 #include "SpritesheetTask.hpp"
-#include <AsyncLoad/util/Setting.hpp>
 #include <AsyncLoad/FileUtils.hpp>
+#include <util/Setting.hpp>
 #include <gtl/phmap.hpp>
 
 using namespace geode::prelude;
