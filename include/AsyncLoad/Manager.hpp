@@ -6,6 +6,7 @@
 #include "Task.hpp"
 #include "TaskGroup.hpp"
 #include "util/EventDefine.hpp"
+#include <Geode/utils/cocos.hpp>
 
 namespace AsyncLoad {
 

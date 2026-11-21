@@ -1,11 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-if ("${CMAKE_SYSTEM_NAME}" STREQUAL "iOS" OR IOS)
-    set(CMAKE_OSX_ARCHITECTURES "arm64")
-else()
-    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
-endif()
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
 project(AsyncLoad VERSION 1.0.0)
@@ -17,7 +12,6 @@ else()
 endif()
 
 set(GEODE_CODEGEN_EXTRA_ARGS "--skip-pugixml" CACHE STRING "" FORCE)
-set(GEODE_ASP_VERSION "@1.6.4" CACHE STRING "" FORCE)
 set(GEODE_NO_PUGIXML_HEADER ON CACHE BOOL "" FORCE)
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 

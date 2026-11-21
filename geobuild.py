@@ -50,6 +50,10 @@ def main(build: Build):
     if config.platform.is_android():
         build.link_libraries("EGL", "GLESv2", "android")
 
+    # TODO: temporary until beta 2
+    if build.platform.is_windows():
+        build.add_link_options("-Xlinker", "/OPT:REF")
+
     if debug:
         build.add_definition("AL_DEBUG")
     if caching:

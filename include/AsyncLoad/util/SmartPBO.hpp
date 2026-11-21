@@ -1,4 +1,6 @@
 #pragma once
+#include <stdint.h>
+#include <stddef.h>
 #include "config.hpp"
 #include "../OpenGLIncludes.hpp"
 

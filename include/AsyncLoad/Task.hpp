@@ -2,6 +2,7 @@
 #include "util/config.hpp"
 #include <stdint.h>
 #include <memory>
+#include <Geode/Result.hpp>
 #include <Geode/utils/function.hpp>
 
 namespace AsyncLoad {

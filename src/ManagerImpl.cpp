@@ -1,5 +1,8 @@
 #include "ManagerImpl.hpp"
 #include "tasks/TaskGroup.hpp"
+#include <Geode/loader/Log.hpp>
+
+using namespace geode;
 
 namespace AsyncLoad {
 

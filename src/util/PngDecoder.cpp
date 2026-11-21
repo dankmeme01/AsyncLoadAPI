@@ -1,7 +1,7 @@
 #include "PngDecoder.hpp"
 #include <spng.h>
 
-using namespace geode::prelude;
+using namespace geode;
 
 namespace AsyncLoad {
 

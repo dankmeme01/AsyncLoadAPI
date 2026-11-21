@@ -1,5 +1,6 @@
 #pragma once
 #include <Geode/Result.hpp>
+#include <span>
 
 struct spng_ctx;
 

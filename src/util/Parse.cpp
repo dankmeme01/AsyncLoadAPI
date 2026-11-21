@@ -1,5 +1,6 @@
 #include <AsyncLoad/util/Parse.hpp>
 #include <asp/iter.hpp>
+#include <Geode/utils/general.hpp>
 
 using namespace geode::prelude;
 

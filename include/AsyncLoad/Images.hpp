@@ -1,5 +1,6 @@
 #pragma once
 #include <stddef.h>
+#include <cocos2d.h>
 #include "util/BufferCache.hpp"
 #include "util/config.hpp"
 

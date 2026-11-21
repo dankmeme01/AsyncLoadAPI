@@ -1,6 +1,6 @@
 #include <AsyncLoad/util/FileMappedBuffer.hpp>
 
-using namespace geode::prelude;
+using namespace geode;
 
 namespace AsyncLoad {
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Geode/loader/Log.hpp>
 #include <AsyncLoad/OpenGLIncludes.hpp>
 #include <asp/iter.hpp>
 #include <utility>

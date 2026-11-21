@@ -1,5 +1,7 @@
 #include <AsyncLoad/SpriteFrames.hpp>
 #include <AsyncLoad/FileUtils.hpp>
+#include <Geode/utils/cocos.hpp>
+#include <Geode/loader/Log.hpp>
 
 using namespace geode::prelude;
 

@@ -1,6 +1,7 @@
 #include <AsyncLoad/Fonts.hpp>
 #include <AsyncLoad/FileUtils.hpp>
 #include <Geode/ui/Label.hpp>
+#include <Geode/loader/Log.hpp>
 
 using namespace geode::prelude;
 

@@ -2,6 +2,7 @@
 #include <AsyncLoad/FileUtils.hpp>
 #include <asp/thread/ThreadPool.hpp>
 #include <Geode/utils/StringMap.hpp>
+#include <Geode/loader/GameEvent.hpp>
 #include "ManagerImpl.hpp"
 #include "tasks/ImageTask.hpp"
 #include "tasks/TextureTask.hpp"

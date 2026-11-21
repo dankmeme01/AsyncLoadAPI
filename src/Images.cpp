@@ -1,6 +1,7 @@
 #include <AsyncLoad/Images.hpp>
 #include <asp/simd.hpp>
-#include <prevter.imageplus/include/events.hpp>
+#include <Geode/utils/cocos.hpp>
+#include <prevter.imageplus/events.hpp>
 #include <util/PngDecoder.hpp>
 
 #ifdef GEODE_IS_WINDOWS

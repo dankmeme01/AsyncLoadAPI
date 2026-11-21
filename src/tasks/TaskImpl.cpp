@@ -1,7 +1,5 @@
 #include "TaskImpl.hpp"
 
-using namespace geode::prelude;
-
 namespace AsyncLoad {
 
 TaskStatus TaskHandle::status() const {

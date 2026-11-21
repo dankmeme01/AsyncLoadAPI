@@ -2,8 +2,6 @@
 #include <arc/prelude.hpp>
 #include <bit>
 
-using namespace geode::prelude;
-
 static constexpr size_t TOTAL_MAXIMUM_THRESHOLD = 256 * 1024 * 1024;
 static constexpr size_t AGGRESSIVE_CLEANUP_THRESHOLD = 32 * 1024 * 1024;
 static constexpr size_t PARTIAL_CLEANUP_THRESHOLD = 8 * 1024 * 1024;
