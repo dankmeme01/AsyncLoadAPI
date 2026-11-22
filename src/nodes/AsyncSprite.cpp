@@ -20,7 +20,7 @@ bool AsyncSprite::initWithSpriteFrameName(ZStringView frameName) {
 bool AsyncSprite::initWithFile(ZStringView filename, CCRect rect) {
     this->initWithPlaceholder();
 
-    m_handle = ALManager::get().loadTexture(filename, [this](auto result) {
+    m_handle = loadTexture(filename, [this](auto result) {
         this->onLoaded(std::move(result));
     });
 

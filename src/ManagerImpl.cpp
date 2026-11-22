@@ -262,4 +262,86 @@ void ALManager::Impl::resumeTask(uint64_t id, bool mainThread) {
     early->insert(id);
 }
 
+TaskHandle ALManager::Impl::loadTextureInner(std::string_view path, TextureLoadParams::Callback callback, bool fullPath, bool eager) {
+    auto tc = CCTextureCache::get();
+
+    std::string fp{path};
+    if (!fullPath) {
+        fp = fullPathForFilename(path);
+    }
+
+    auto cachedTex = static_cast<CCTexture2D*>(tc->m_pTextures->objectForKey(fp));
+    if (cachedTex) {
+        AL_TRACE("loadTexture: cache hit for '{}'", fp);
+
+        if (eager) {
+            callback(Ok(cachedTex));
+            return {};
+        } else {
+            // create a dummy task that is already complete
+            return this->createReadyTask<Ref<CCTexture2D>>(Ok(cachedTex), std::move(callback));
+        }
+    }
+
+    // check if it's already pending and return a JoinTask
+    if (auto existingTask = this->findTextureTask(fp)) {
+        auto task = this->createJoinTask<TextureTask>(existingTask, std::move(callback));
+        AL_TRACE("loadTexture: task {} will join existing task {} for texture '{}'", task.id(), existingTask->m_id, fp);
+        return task;
+    }
+
+    AL_TRACE_NOISY("loadTexture: creating task for texture '{}'", fp);
+    return this->createAndSubmitTask<TextureTask>(
+        [cb = std::move(callback), fp, tc](auto result) mutable {
+            if (!result) return cb(std::move(result));
+
+            auto tex = std::move(result).unwrap();
+            tc->m_pTextures->setObject(tex, fp);
+            cb(Ok(tex));
+        },
+        TextureLoadParams{
+            .path = fp,
+            .isFullPath = true,
+        },
+        true
+    );
+}
+
+TaskHandle ALManager::Impl::loadSpritesheetInner(
+    std::string_view name,
+    LoadSpritesheetCallback callback,
+    SpritesheetMergeBehavior mergeBehavior,
+    bool eager
+) {
+    auto sfc = CCSpriteFrameCache::get();
+
+    // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
+    // without running fullPathForFilename. we will replicate this and also use it as a unique key.
+    auto plistKey = fmt::format("{}.plist", name);
+    if (sfc->m_pLoadedFileNames->contains(plistKey)) {
+        // already loaded!
+        AL_TRACE("loadSpritesheet: cache hit for {}", plistKey);
+        LoadedSpritesheet result {
+            .skipped = true
+        };
+
+        if (eager) {
+            callback(Ok(std::move(result)));
+            return {};
+        } else {
+            // create a dummy task that is already complete
+            return this->createReadyTask<LoadedSpritesheet>(Ok(std::move(result)), std::move(callback));
+        }
+    }
+
+    // check if it's already pending and return a JoinTask
+    if (auto existingTask = this->findSpritesheetTask(name)) {
+        auto task = this->createJoinTask<SpritesheetTask>(existingTask, std::move(callback));
+        AL_TRACE("loadSpritesheet: task {} will join existing task {} for sheet '{}'", task.id(), existingTask->m_id, name);
+        return task;
+    }
+
+    return this->createAndSubmitTask<SpritesheetTask>(std::move(callback), name, mergeBehavior);
+}
+
 }

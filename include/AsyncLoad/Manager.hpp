@@ -99,6 +99,8 @@ struct LoadedSpritesheet {
     std::vector<geode::Ref<cocos2d::CCTexture2D>> candidateTextures;
 };
 
+using LoadSpritesheetCallback = geode::Function<void(geode::Result<LoadedSpritesheet>)>;
+
 struct BudgetGrant {
     ~BudgetGrant() {
         this->_return();
@@ -149,68 +151,25 @@ public:
 
     ~ALManager();
 
-    // High-level load APIs - high-level safe APIs that will use caches
-    // Note that those may invoke the given callback *instantly* if cache is available.
-    // In that case, they may return a blank TaskHandle.
-
-    /// Creates a CCTexture2D from the image at the given path, invokes callback on main thread when done or errored.
-    /// Uses CCTextureCache to skip loading if the texture is already loaded.
-    /// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
-    ///
-    /// If another task with the same `path` value is already in progress, this does not spawn a duplicate task to load it again.
-    /// Instead, it will join that task and invoke the callback when that task is done.
-    ///
-    /// NOTE: if the texture exists in cache, this will never invoke the callback immediately.
-    /// There is a guarantee that the callback will be invoked to run as soon as possible (usually next frame, on main thread),
-    /// and if that is not enough, you can use `loadTextureEager`.
-    TaskHandle loadTexture(std::string_view path, TextureLoadParams::Callback callback, bool fullPath = false);
-
-    /// Like `loadTexture`, but if the texture is already in cache, the callback will be invoked immediately,
-    /// and the returned handle will be empty.
-    TaskHandle loadTextureEager(std::string_view path, TextureLoadParams::Callback callback, bool fullPath = false);
-
-    using LoadSpritesheetCallback = geode::Function<void(geode::Result<LoadedSpritesheet>)>;
-
-    /// Loads a spritesheet file by the given name, invokes callback on main thread when done or errored.
-    /// This loads the appropriate .png and .plist files in parallel and uses caches to avoid excessive loading.
-    /// You must pass the name without any extension to this function, e.g. `GJ_GameSheet_01`.
-    /// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
-    ///
-    /// If the same sheet is already being loaded, this does not spawn a duplicate task to load it again.
-    /// Instead, it will join that task and invoke the callback when that task is done.
-    TaskHandle loadSpritesheet(
-        std::string_view name,
-        LoadSpritesheetCallback callback,
-        SpritesheetMergeBehavior mergeBehavior = SpritesheetMergeBehavior::Default
-    );
-
-    /// Like `loadSpritesheet`, but if the spritesheet is already in cache, the callback will be invoked immediately,
-    /// and the returned handle will be empty.
-    TaskHandle loadSpritesheetEager(
-        std::string_view name,
-        LoadSpritesheetCallback callback,
-        SpritesheetMergeBehavior mergeBehavior = SpritesheetMergeBehavior::Default
-    );
-
-
     // Submission APIs - low-level APIs for high control.
     // They are fully thread-safe, and enqueue operations to happen in the background, giving you a handle to cancel it and letting you pass a callback.
     // They do not interact with any caches. For a slightly higher level API that will use cocos caches, see ALManager::loadXXXX APIs.
 
     /// Begins to load an image in the background and invokes the given callback on main thread when done or errored.
-    TaskHandle submitImageLoad(ImageLoadParams&& params);
+    AL_EVENT_EXPORT_MEMBER(ALManager, TaskHandle, submitImageLoad, (ImageLoadParams&& params), (std::move(params)));
+
     /// Begins to load a texture in the background and invokes the given callback on main thread when done or errored.
-    TaskHandle submitTextureLoad(TextureLoadParams&& params);
+    AL_EVENT_EXPORT_MEMBER(ALManager, TaskHandle, submitTextureLoad, (TextureLoadParams&& params), (std::move(params)));
+
     /// Begins to load sprite frames from a .plist file in the background and invokes the given callback on main thread when done or errored.
     /// This does not load the actual texture of the spritesheet, only the sprite frames. Use submitTextureLoad() for that.
-    TaskHandle submitSpriteFramesLoad(SpriteFramesLoadParams&& params);
-
+    AL_EVENT_EXPORT_MEMBER(ALManager, TaskHandle, submitSpriteFramesLoad, (SpriteFramesLoadParams&& params), (std::move(params)));
 
     /// This function may be called at any time to push forward any pending asynchronous tasks that are waiting for the main thread.
     /// Note: this MUST only be called from the thread owning the OpenGL context, otherwise behavior is undefined.
     /// This is useful when you are blocking the main thread for a while to wait for resources to load,
     /// or if you are rewriting the game core loop and want to make it so the game actually does work instead of sleeping between frames.
-    void lendMainThread();
+    AL_EVENT_EXPORT_MEMBER(ALManager, void, lendMainThread, (), ());
 
     /// Enqueues the task to be polled by a worker thread or the main thread again soon.
     /// This should not be used generally, only if you are implementing a custom task type and using `Suspend` as the result for asynchronous waiting.
@@ -227,9 +186,6 @@ private:
     std::unique_ptr<Impl> m_impl;
 
     ALManager();
-
-    TaskHandle loadTextureInner(std::string_view path, TextureLoadParams::Callback callback, bool fullPath, bool eager);
-    TaskHandle loadSpritesheetInner(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior, bool eager);
 };
 
 #endif
@@ -241,14 +197,54 @@ inline void BudgetGrant::_return() {
 
 // The functions below are for the event based API, which can be used without linking to the mod, unlike ALManager
 
-/// Asynchronously loads the texture by the given path (must be a `.png` file) and puts it into `CCTextureCache`.
-/// If the texture is already cached, immediately invokes the callback with the texture. If the mod is not loaded, returns an error.
-/// Pass `fullPath = true` if the path is already a full path and you want to avoid search path resolution.
-AL_EVENT_EXPORT(geode::Result<>, loadTexture, (
+// High-level load APIs - high-level safe APIs that will use caches
+// Note that those may invoke the given callback *instantly* if cache is available.
+// In that case, they may return a blank TaskHandle.
+
+/// Creates a CCTexture2D from the image at the given path, invokes callback on main thread when done or errored.
+/// Uses CCTextureCache to skip loading if the texture is already loaded.
+/// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
+///
+/// If another task with the same `path` value is already in progress, this does not spawn a duplicate task to load it again.
+/// Instead, it will join that task and invoke the callback when that task is done.
+///
+/// NOTE: if the texture exists in cache, this will never invoke the callback immediately.
+/// There is a guarantee that the callback will be invoked to run as soon as possible (usually next frame, on main thread),
+/// and if that is not enough, you can use `loadTextureEager`.
+AL_EVENT_EXPORT(TaskHandle, loadTexture, (
     std::string_view path,
     TextureLoadParams::Callback callback,
-    bool fullPath
+    bool fullPath = false
 ), (path, std::move(callback), fullPath));
+
+/// Like `loadTexture`, but if the texture is already in cache, the callback will be invoked immediately,
+/// and the returned handle will be empty.
+AL_EVENT_EXPORT(TaskHandle, loadTextureEager, (
+    std::string_view path,
+    TextureLoadParams::Callback callback,
+    bool fullPath = false
+), (path, std::move(callback), fullPath));
+
+/// Loads a spritesheet file by the given name, invokes callback on main thread when done or errored.
+/// This loads the appropriate .png and .plist files in parallel and uses caches to avoid excessive loading.
+/// You must pass the name without any extension to this function, e.g. `GJ_GameSheet_01`.
+/// Due to the use of cache, this function is NOT thread safe. Use lower-level alternatives for speed & thread-safety.
+///
+/// If the same sheet is already being loaded, this does not spawn a duplicate task to load it again.
+/// Instead, it will join that task and invoke the callback when that task is done.
+AL_EVENT_EXPORT(TaskHandle, loadSpritesheet, (
+    std::string_view name,
+    LoadSpritesheetCallback callback,
+    SpritesheetMergeBehavior mergeBehavior = SpritesheetMergeBehavior::Default
+), (name, std::move(callback), mergeBehavior));
+
+/// Like `loadSpritesheet`, but if the spritesheet is already in cache, the callback will be invoked immediately,
+/// and the returned handle will be empty.
+AL_EVENT_EXPORT(TaskHandle, loadSpritesheetEager, (
+    std::string_view name,
+    LoadSpritesheetCallback callback,
+    SpritesheetMergeBehavior mergeBehavior = SpritesheetMergeBehavior::Default
+), (name, std::move(callback), mergeBehavior));
 
 /// Asynchronously loads the texture by the given path (must be a `.png` file) and puts it into `CCTextureCache`.
 /// The path need not to be a full path, if it's a relative path it will be resolved using fullPathForFilename.

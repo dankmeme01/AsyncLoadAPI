@@ -178,7 +178,7 @@ TaskAdvanceResult SpritesheetTask::advance(bool mainThread) {
             // submit 2 tasks, for png and for plist
             m_spritesheetState->m_pendingTasks.fetch_add(2, std::memory_order::relaxed);
 
-            am.loadTextureEager(pngPath, [pngPath, sstate = m_spritesheetState](Result<Ref<CCTexture2D>> result) {
+            loadTextureEager(pngPath, [pngPath, sstate = m_spritesheetState](Result<Ref<CCTexture2D>> result) {
                 if (result) {
                     sstate->m_texture = std::move(*result);
                 }

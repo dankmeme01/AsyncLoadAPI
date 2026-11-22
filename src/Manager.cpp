@@ -7,7 +7,6 @@
 #include "tasks/ImageTask.hpp"
 #include "tasks/TextureTask.hpp"
 #include "tasks/SpriteFramesTask.hpp"
-#include "tasks/SpritesheetTask.hpp"
 #include "OpenGL.hpp"
 
 #include <Geode/modify/LoadingLayer.hpp>
@@ -43,104 +42,6 @@ TaskHandle ALManager::submitTextureLoad(TextureLoadParams&& params) {
 TaskHandle ALManager::submitSpriteFramesLoad(SpriteFramesLoadParams&& params) {
     auto cb = std::move(params.callback);
     return m_impl->createAndSubmitTask<SpriteFramesTask>(std::move(cb), std::move(params));
-}
-
-TaskHandle ALManager::loadTextureInner(std::string_view path, TextureLoadParams::Callback callback, bool fullPath, bool eager) {
-    auto tc = CCTextureCache::get();
-
-    std::string fp{path};
-    if (!fullPath) {
-        fp = fullPathForFilename(path);
-    }
-
-    auto cachedTex = static_cast<CCTexture2D*>(tc->m_pTextures->objectForKey(fp));
-    if (cachedTex) {
-        AL_TRACE("loadTexture: cache hit for '{}'", fp);
-
-        if (eager) {
-            callback(Ok(cachedTex));
-            return {};
-        } else {
-            // create a dummy task that is already complete
-            return m_impl->createReadyTask<Ref<CCTexture2D>>(Ok(cachedTex), std::move(callback));
-        }
-    }
-
-    // check if it's already pending and return a JoinTask
-    if (auto existingTask = m_impl->findTextureTask(fp)) {
-        auto task = m_impl->createJoinTask<TextureTask>(existingTask, std::move(callback));
-        AL_TRACE("loadTexture: task {} will join existing task {} for texture '{}'", task.id(), existingTask->m_id, fp);
-        return task;
-    }
-
-    AL_TRACE_NOISY("loadTexture: creating task for texture '{}'", fp);
-    return m_impl->createAndSubmitTask<TextureTask>(
-        [cb = std::move(callback), fp, tc](auto result) mutable {
-            if (!result) return cb(std::move(result));
-
-            auto tex = std::move(result).unwrap();
-            tc->m_pTextures->setObject(tex, fp);
-            cb(Ok(tex));
-        },
-        TextureLoadParams{
-            .path = fp,
-            .isFullPath = true,
-        },
-        true
-    );
-}
-
-TaskHandle ALManager::loadSpritesheetInner(
-    std::string_view name,
-    LoadSpritesheetCallback callback,
-    SpritesheetMergeBehavior mergeBehavior,
-    bool eager
-) {
-    auto sfc = CCSpriteFrameCache::get();
-
-    // cocos in CCSpriteFrameCache uses the raw .plist filename as the key in m_pLoadedFileNames,
-    // without running fullPathForFilename. we will replicate this and also use it as a unique key.
-    auto plistKey = fmt::format("{}.plist", name);
-    if (sfc->m_pLoadedFileNames->contains(plistKey)) {
-        // already loaded!
-        AL_TRACE("loadSpritesheet: cache hit for {}", plistKey);
-        LoadedSpritesheet result {
-            .skipped = true
-        };
-
-        if (eager) {
-            callback(Ok(std::move(result)));
-            return {};
-        } else {
-            // create a dummy task that is already complete
-            return m_impl->createReadyTask<LoadedSpritesheet>(Ok(std::move(result)), std::move(callback));
-        }
-    }
-
-    // check if it's already pending and return a JoinTask
-    if (auto existingTask = m_impl->findSpritesheetTask(name)) {
-        auto task = m_impl->createJoinTask<SpritesheetTask>(existingTask, std::move(callback));
-        AL_TRACE("loadSpritesheet: task {} will join existing task {} for sheet '{}'", task.id(), existingTask->m_id, name);
-        return task;
-    }
-
-    return m_impl->createAndSubmitTask<SpritesheetTask>(std::move(callback), name, mergeBehavior);
-}
-
-TaskHandle ALManager::loadTexture(std::string_view path, TextureLoadParams::Callback callback, bool fullPath) {
-    return loadTextureInner(path, std::move(callback), fullPath, false);
-}
-
-TaskHandle ALManager::loadTextureEager(std::string_view path, TextureLoadParams::Callback callback, bool fullPath) {
-    return loadTextureInner(path, std::move(callback), fullPath, true);
-}
-
-TaskHandle ALManager::loadSpritesheet(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior) {
-    return loadSpritesheetInner(name, std::move(callback), mergeBehavior, false);
-}
-
-TaskHandle ALManager::loadSpritesheetEager(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior) {
-    return loadSpritesheetInner(name, std::move(callback), mergeBehavior, true);
 }
 
 SmartPBO ALManager::requestPBO(size_t capacity) {
@@ -252,17 +153,24 @@ void ALManager::enqueueSuspendedTask(TaskHandle handle, bool mainThread) {
     m_impl->resumeTask(handle.id(), mainThread);
 }
 
-Result<> loadTexture(
-    std::string_view path,
-    TextureLoadParams::Callback callback,
-    bool fullPath
-) {
-    ALManager::get().loadTexture(path, std::move(callback), fullPath);
-    return Ok();
+TaskHandle loadTexture(std::string_view path, TextureLoadParams::Callback callback, bool fullPath) {
+    return ALManager::Impl::get().loadTextureInner(path, std::move(callback), fullPath, false);
+}
+
+TaskHandle loadTextureEager(std::string_view path, TextureLoadParams::Callback callback, bool fullPath) {
+    return ALManager::Impl::get().loadTextureInner(path, std::move(callback), fullPath, true);
+}
+
+TaskHandle loadSpritesheet(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior) {
+    return ALManager::Impl::get().loadSpritesheetInner(name, std::move(callback), mergeBehavior, false);
+}
+
+TaskHandle loadSpritesheetEager(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior) {
+    return ALManager::Impl::get().loadSpritesheetInner(name, std::move(callback), mergeBehavior, true);
 }
 
 Result<> preload(std::string_view path) {
-    ALManager::get().loadTextureEager(path, [](auto) {});
+    loadTextureEager(path, [](auto) {});
     return Ok();
 }
 

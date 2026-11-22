@@ -82,6 +82,9 @@ struct ALManager::Impl : CCObject {
     void cancelAll();
 
     void enqueueTaskGroupPoll(std::shared_ptr<detail::GroupControl> ctl);
+
+    TaskHandle loadTextureInner(std::string_view path, TextureLoadParams::Callback callback, bool fullPath, bool eager);
+    TaskHandle loadSpritesheetInner(std::string_view name, LoadSpritesheetCallback callback, SpritesheetMergeBehavior mergeBehavior, bool eager);
 };
 
 }
