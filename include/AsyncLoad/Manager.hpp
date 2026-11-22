@@ -4,7 +4,6 @@
 #include "SpriteFrames.hpp"
 #include "Images.hpp"
 #include "Task.hpp"
-#include "TaskGroup.hpp"
 #include "util/EventDefine.hpp"
 #include <Geode/utils/cocos.hpp>
 
@@ -156,20 +155,20 @@ public:
     // They do not interact with any caches. For a slightly higher level API that will use cocos caches, see ALManager::loadXXXX APIs.
 
     /// Begins to load an image in the background and invokes the given callback on main thread when done or errored.
-    AL_EVENT_EXPORT_MEMBER(ALManager, TaskHandle, submitImageLoad, (ImageLoadParams&& params), (std::move(params)));
+    AL_EVENT_EXPORT_MEMBER(ALManager, TaskHandle, submitImageLoad, (ImageLoadParams&& params), (this, std::move(params)));
 
     /// Begins to load a texture in the background and invokes the given callback on main thread when done or errored.
-    AL_EVENT_EXPORT_MEMBER(ALManager, TaskHandle, submitTextureLoad, (TextureLoadParams&& params), (std::move(params)));
+    AL_EVENT_EXPORT_MEMBER(ALManager, TaskHandle, submitTextureLoad, (TextureLoadParams&& params), (this, std::move(params)));
 
     /// Begins to load sprite frames from a .plist file in the background and invokes the given callback on main thread when done or errored.
     /// This does not load the actual texture of the spritesheet, only the sprite frames. Use submitTextureLoad() for that.
-    AL_EVENT_EXPORT_MEMBER(ALManager, TaskHandle, submitSpriteFramesLoad, (SpriteFramesLoadParams&& params), (std::move(params)));
+    AL_EVENT_EXPORT_MEMBER(ALManager, TaskHandle, submitSpriteFramesLoad, (SpriteFramesLoadParams&& params), (this, std::move(params)));
 
     /// This function may be called at any time to push forward any pending asynchronous tasks that are waiting for the main thread.
     /// Note: this MUST only be called from the thread owning the OpenGL context, otherwise behavior is undefined.
     /// This is useful when you are blocking the main thread for a while to wait for resources to load,
     /// or if you are rewriting the game core loop and want to make it so the game actually does work instead of sleeping between frames.
-    AL_EVENT_EXPORT_MEMBER(ALManager, void, lendMainThread, (), ());
+    AL_EVENT_EXPORT_MEMBER(ALManager, void, lendMainThread, (), (this));
 
     /// Enqueues the task to be polled by a worker thread or the main thread again soon.
     /// This should not be used generally, only if you are implementing a custom task type and using `Suspend` as the result for asynchronous waiting.
