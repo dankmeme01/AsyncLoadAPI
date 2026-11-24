@@ -16,7 +16,7 @@ Async Load API is created for mods that handle a significant volume of textures 
 
 ## How to use
 
-> ![NOTE]
+> [!NOTE]
 > The mod itself does nothing on its own for the user - it's a purely API mod made to be utilized by other mods. Below are the instructions on how to use it in another mod.
 
 Add the mod as a dependency in your `mod.json`:
