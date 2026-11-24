@@ -1,3 +1,5 @@
+#if 0
+
 #include <AsyncLoad/nodes/AsyncSprite.hpp>
 
 using namespace geode::prelude;
@@ -101,3 +103,5 @@ AsyncSprite* AsyncSprite::createWithSpriteFrameName(geode::ZStringView frameName
 
 
 }
+
+#endif

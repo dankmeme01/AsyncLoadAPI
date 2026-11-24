@@ -1,5 +1,7 @@
 #pragma once
 
+#if 0
+
 #include <Geode/Geode.hpp>
 #include <AsyncLoad/Manager.hpp>
 #include "../util/config.hpp"
@@ -36,3 +38,5 @@ protected:
 };
 
 }
+
+#endif
