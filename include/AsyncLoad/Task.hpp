@@ -1,5 +1,6 @@
 #pragma once
 #include "util/config.hpp"
+#include "util/EventDefine.hpp"
 #include <stdint.h>
 #include <memory>
 #include <Geode/Result.hpp>
@@ -25,6 +26,7 @@ class AL_DLL TaskHandle {
 public:
     /// Constructs an empty task handle, representing no task.
     TaskHandle() = default;
+    ~TaskHandle() = default;
     TaskHandle(const TaskHandle&) = default;
     TaskHandle(TaskHandle&& other) noexcept = default;
     TaskHandle& operator=(const TaskHandle&) = default;
@@ -45,13 +47,13 @@ public:
     /// Returns the status of task execution.
     /// Note that the task may change its status soon after polling it, because tasks run asynchronously.
     /// For empty or invalid task handles, returns `Cancelled`.
-    TaskStatus status() const;
+    AL_EXPORT_MEMBER_CONST(TaskHandle, TaskStatus, status, (), (this));
 
     /// Returns the unique ID of the task, or 0 for empty task.
-    uint64_t id() const;
+    AL_EXPORT_MEMBER_CONST(TaskHandle, uint64_t, id, (), (this));
 
     /// Returns the error message, if available.
-    std::string error() const;
+    AL_EXPORT_MEMBER_CONST(TaskHandle, std::string, error, (), (this));
 
     /// Returns whether the task has reached a conclusion. This can mean one of the three cases: success, error or cancellation.
     bool done() const {
@@ -74,14 +76,14 @@ public:
     /// However, this function does provide one important guarantee: if called in the main thread, it ensures that
     /// the callbacks of the task will NOT be fired. Even if the task has already completed and the callbacks are queued to run,
     /// this ensures that callbacks will NOT run after `cancel`, so that it's easier to reason about lifetimes of captured objects.
-    void cancel() const;
+    AL_EXPORT_MEMBER_CONST(TaskHandle, void, cancel, (), (this));
 
     /// Sets the name of the task, visible in logs and errors for debug purposes.
     /// Safe if you are the only owner of the handle and no one is setting the name at the same time.
-    void setName(std::string name) const;
+    AL_EXPORT_MEMBER_CONST(TaskHandle, void, setName, (std::string name), (this, std::move(name)));
 
     /// Retrieves the name of the task. If none was set, returns "Task <id>".
-    std::string name() const;
+    AL_EXPORT_MEMBER_CONST(TaskHandle, std::string, name, (), (this));
 
 private:
     friend class ALManager;
