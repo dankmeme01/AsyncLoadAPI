@@ -12,32 +12,6 @@ static_assert(std::is_trivially_destructible_v<pugi::xml_node>);
 
 namespace AsyncLoad {
 
-struct SpriteFrameData::Impl {
-    SpriteFrameMetadata metadata;
-    std::vector<SpriteFrame> frames;
-};
-
-SpriteFrameData::SpriteFrameData(std::unique_ptr<Impl> impl) : m_impl(std::move(impl)) {}
-SpriteFrameData::SpriteFrameData(SpriteFrameData&&) noexcept = default;
-SpriteFrameData& SpriteFrameData::operator=(SpriteFrameData&&) noexcept = default;
-SpriteFrameData::~SpriteFrameData() = default;
-
-const std::vector<SpriteFrame>& SpriteFrameData::getFrames() const {
-    return m_impl->frames;
-}
-
-std::vector<SpriteFrame>& SpriteFrameData::getFrames() & {
-    return m_impl->frames;
-}
-
-std::vector<SpriteFrame> SpriteFrameData::getFrames() && {
-    return std::move(m_impl->frames);
-}
-
-const SpriteFrameMetadata& SpriteFrameData::getMetadata() const {
-    return m_impl->metadata;
-}
-
 template <typename T>
 std::optional<T> parseNode(pugi::xml_node node) {
     auto str = node.child_value();
@@ -216,7 +190,7 @@ bool parseSpriteFrame(pugi::xml_node node, SpriteFrame& sframe, int format) {
 }
 
 Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, const ParseSpriteFramesOptions& options) {
-    auto sfdata = std::make_unique<SpriteFrameData::Impl>();
+    SpriteFrameData sfdata;
 
     pugi::xml_parse_result result;
     pugi::xml_document doc;
@@ -283,22 +257,22 @@ Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, const ParseSp
 
         switch (keyHash) {
             case AL_STRING_HASH("format"): {
-                sfdata->metadata.format = parseNode<int>(valueNode).value_or(-1);
+                sfdata.metadata.format = parseNode<int>(valueNode).value_or(-1);
             } break;
 
             case AL_STRING_HASH("textureFileName"): {
-                sfdata->metadata.textureFileName = valueNode.child_value();
+                sfdata.metadata.textureFileName = valueNode.child_value();
             } break;
 
             default: break;
         }
     }
 
-    if (sfdata->metadata.format < 0 || sfdata->metadata.format > 3) {
-        return Err("Unsupported format version: {}", sfdata->metadata.format);
+    if (sfdata.metadata.format < 0 || sfdata.metadata.format > 3) {
+        return Err("Unsupported format version: {}", sfdata.metadata.format);
     }
 
-    // Note: one could try and optimize this by counting the amount of children and reserving space in the `sfData->frames`.
+    // Note: one could try and optimize this by counting the amount of children and reserving space in the `sfdata.frames`.
     // In my tests this proved to be ever so slightly slower, although it could depend on the platform and device.
     // Therefore this optimization was not done here.
 
@@ -318,15 +292,15 @@ Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, const ParseSp
             continue;
         }
 
-        if (!parseSpriteFrame(frameDict, frame, sfdata->metadata.format)) {
+        if (!parseSpriteFrame(frameDict, frame, sfdata.metadata.format)) {
             log::warn("Failed to parse frame '{}', skipping!", frame.name);
             continue;
         }
 
-        sfdata->frames.push_back(std::move(frame));
+        sfdata.frames.push_back(std::move(frame));
     }
 
-    return Ok(SpriteFrameData{std::move(sfdata)});
+    return Ok(std::move(sfdata));
 }
 
 }

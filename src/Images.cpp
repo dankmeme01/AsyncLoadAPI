@@ -286,6 +286,7 @@ Result<RawImage> RawImage::create(std::span<const uint8_t> data) {
         .width = img->width,
         .height = img->height,
         .hasAlpha = img->hasAlpha,
+        .premultiplied = img->isPreMultiplied,
     });
 }
 

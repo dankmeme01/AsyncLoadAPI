@@ -1,5 +1,6 @@
 #include "ManagerImpl.hpp"
 #include "tasks/TaskGroup.hpp"
+#include "OpenGL.hpp"
 #include <Geode/loader/Log.hpp>
 
 using namespace geode;
@@ -128,6 +129,10 @@ std::shared_ptr<SpritesheetTask::Control> ALManager::Impl::findSpritesheetTask(s
 }
 
 void ALManager::Impl::update(float dt) {
+    if (!g_opengl.initialized) {
+        g_opengl.initialize();
+    }
+
     auto start = asp::Instant::now();
 
     auto q = std::exchange(*m_groupControlQueue.lock(), {});

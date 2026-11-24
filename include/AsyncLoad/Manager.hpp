@@ -135,8 +135,6 @@ struct PendingBudgetGrant {
     }
 };
 
-#ifdef AL_CAN_LINK
-
 class AL_DLL ALManager final {
 public:
     struct Impl;
@@ -179,15 +177,14 @@ public:
 
     std::optional<BudgetGrant> requestMemoryBudget(uint64_t bytes);
     PendingBudgetGrant requestMemoryBudgetOrWait(uint64_t bytes, TaskHandle handle);
-    void _returnMemoryBudget(uint64_t value);
+
+    AL_EXPORT_MEMBER(ALManager, void, _returnMemoryBudget, (uint64_t value), (this, value));
 
 private:
     std::unique_ptr<Impl> m_impl;
 
     ALManager();
 };
-
-#endif
 
 inline void BudgetGrant::_return() {
     if (m_value) ALManager::get()._returnMemoryBudget(m_value);

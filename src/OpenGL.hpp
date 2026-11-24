@@ -4,6 +4,7 @@
 #include <AsyncLoad/OpenGLIncludes.hpp>
 #include <asp/iter.hpp>
 #include <utility>
+#include <atomic>
 
 #ifndef GL_PIXEL_UNPACK_BUFFER
 # define GL_PIXEL_UNPACK_BUFFER 0x88EC

@@ -12,32 +12,6 @@ using namespace geode::prelude;
 
 namespace AsyncLoad {
 
-struct SpriteFrameData::Impl {
-    SpriteFrameMetadata metadata;
-    std::vector<SpriteFrame> frames;
-};
-
-SpriteFrameData::SpriteFrameData(std::unique_ptr<Impl> impl) : m_impl(std::move(impl)) {}
-SpriteFrameData::SpriteFrameData(SpriteFrameData&&) noexcept = default;
-SpriteFrameData& SpriteFrameData::operator=(SpriteFrameData&&) noexcept = default;
-SpriteFrameData::~SpriteFrameData() = default;
-
-const std::vector<SpriteFrame>& SpriteFrameData::getFrames() const {
-    return m_impl->frames;
-}
-
-std::vector<SpriteFrame>& SpriteFrameData::getFrames() & {
-    return m_impl->frames;
-}
-
-std::vector<SpriteFrame> SpriteFrameData::getFrames() && {
-    return std::move(m_impl->frames);
-}
-
-const SpriteFrameMetadata& SpriteFrameData::getMetadata() const {
-    return m_impl->metadata;
-}
-
 // Helper to convert NSString to string_view without copying
 static inline std::string_view to_view(NSString* s) {
     if (!s) return {};
@@ -220,7 +194,7 @@ Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, const ParseSp
             return Err("NSPropertyList failed: {}", [[error localizedDescription] UTF8String]);
         }
 
-        auto sfdata = std::make_unique<SpriteFrameData::Impl>();
+        SpriteFrameData sfdata;
         NSDictionary* metadata = root[@"metadata"];
         NSDictionary* frames = root[@"frames"];
 
@@ -229,13 +203,13 @@ Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, const ParseSp
         }
 
         // parse metadata
-        sfdata->metadata.format = [metadata[@"format"] intValue];
+        sfdata.metadata.format = [metadata[@"format"] intValue];
         if (NSString* texName = metadata[@"textureFileName"]) {
-            sfdata->metadata.textureFileName = [texName UTF8String];
+            sfdata.metadata.textureFileName = [texName UTF8String];
         }
 
-        if (sfdata->metadata.format < 0 || sfdata->metadata.format > 3) {
-            return Err("Unsupported format version: {}", sfdata->metadata.format);
+        if (sfdata.metadata.format < 0 || sfdata.metadata.format > 3) {
+            return Err("Unsupported format version: {}", sfdata.metadata.format);
         }
 
         for (NSString* frameName in frames) {
@@ -248,12 +222,12 @@ Result<SpriteFrameData> parseSpriteFrames(void* data, size_t size, const ParseSp
                 continue;
             }
 
-            if (!parseSpriteFrame(frameDict, sframe, sfdata->metadata.format)) {
+            if (!parseSpriteFrame(frameDict, sframe, sfdata.metadata.format)) {
                 log::warn("Failed to parse frame '{}', skipping!", sframe.name);
                 continue;
             }
 
-            sfdata->frames.push_back(std::move(sframe));
+            sfdata.frames.push_back(std::move(sframe));
         }
 
         return Ok(std::move(sfdata));

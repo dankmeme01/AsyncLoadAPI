@@ -68,7 +68,7 @@ static bool shouldMerge(SpritesheetMergeBehavior behavior) {
         case SpritesheetMergeBehavior::Never: return false;
         case SpritesheetMergeBehavior::Always: return true;
         case SpritesheetMergeBehavior::Default:
-            return getSettingFast<"merge-plists", bool>();
+            return anyTexturePacksLoaded() && getSettingFast<"merge-plists", bool>();
     }
 }
 
@@ -105,7 +105,7 @@ static void handleCandidatePlistResult(SpritesheetState& state, std::string_view
     } else {
         // get the path to png via textureFileName in the plist
         auto data = std::move(result.unwrap());
-        auto png = fmt::format("{}{}", parent(path, true), data.getMetadata().textureFileName);
+        auto png = fmt::format("{}{}", parent(path, true), data.metadata.textureFileName);
 
         // since we have the full png path (which is a cctexturecache key), we can check if the texture is cached right away,
         // because this function runs on main thread
@@ -190,7 +190,7 @@ TaskAdvanceResult SpritesheetTask::advance(bool mainThread) {
                 .isFullPath = true,
                 .callback = [plistPath, sstate = m_spritesheetState](Result<SpriteFrameData> result) {
                     if (result) {
-                        auto frames = std::move(result.unwrap()).getFrames();
+                        auto frames = std::move(result.unwrap().frames);
                         for (auto& frame : frames) {
                             sstate->m_loadedFrameNames.insert(frame.name);
                             sstate->m_spriteFrames.emplace_back(std::move(frame));
@@ -320,7 +320,7 @@ bool SpritesheetTask::doMerge() {
     for (auto& mc : state.m_mergeCandidates) {
         std::optional<size_t> textureIdx;
 
-        for (auto& f : mc.data.getFrames()) {
+        for (auto& f : mc.data.frames) {
             if (!state.m_loadedFrameNames.insert(f.name).second) {
                 continue;
             }
@@ -383,7 +383,7 @@ void SpritesheetTask::addAndComplete() {
     if (!state.m_mergeCandidates.empty()) {
         AL_TRACE_NOISY("Considered candidates:");
         for (auto& mc : state.m_mergeCandidates) {
-            AL_TRACE_NOISY("  {} ({} frames)", mc.pngPath, mc.data.getFrames().size());
+            AL_TRACE_NOISY("  {} ({} frames)", mc.pngPath, mc.data.frames.size());
         }
     }
 #endif

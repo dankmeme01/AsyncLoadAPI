@@ -1,9 +1,30 @@
 #include "OpenGL.hpp"
 
+#ifdef GEODE_IS_WINDOWS
+# include <Windows.h>
+#elif defined(GEODE_IS_MACOS)
+# include <OpenGL/OpenGL.h>
+#endif
+
 using namespace geode::prelude;
+
+static bool isInsideContext() {
+#ifdef GEODE_IS_WINDOWS
+    return wglGetCurrentContext() != nullptr;
+#elif defined(GEODE_IS_ANDROID)
+    return eglGetCurrentContext() != EGL_NO_CONTEXT;
+#elif defined(GEODE_IS_MACOS)
+    return CGLGetCurrentContext() != nullptr;
+#else
+    // this is so stupid lol
+    return glGetString(GL_VERSION) != nullptr;
+#endif
+}
 
 void OpenGLInfo::initialize() {
     if (initialized) return;
+
+    if (!isInsideContext()) return;
 
     this->initOpenGLVersion();
     this->initFeatures();

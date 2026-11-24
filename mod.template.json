@@ -12,6 +12,7 @@
     "developer": "dankmeme",
     "description": "",
     "dependencies": {},
+    "early-load": true,
     "settings": {
         "use-pbos": {
             "type": "bool",

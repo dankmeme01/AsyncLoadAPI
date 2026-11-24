@@ -8,7 +8,7 @@ using namespace geode::prelude;
 namespace AsyncLoad {
 
 void addSpriteFrames(const SpriteFrameData& frames, cocos2d::CCTexture2D* texture, std::string_view key) {
-    return addSpriteFrames(frames.getFrames(), texture, key);
+    return addSpriteFrames(frames.frames, texture, key);
 }
 
 void addSpriteFrames(const std::vector<SpriteFrame>& frames, cocos2d::CCTexture2D* texture, std::string_view key) {

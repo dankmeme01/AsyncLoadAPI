@@ -1,6 +1,8 @@
+#pragma once
 #include "config.hpp"
 
 #ifdef AsyncLoad_EXPORTS
+# undef GEODE_DEFINE_EVENT_EXPORTS
 # define GEODE_DEFINE_EVENT_EXPORTS
 #else
 # undef GEODE_DEFINE_EVENT_EXPORTS

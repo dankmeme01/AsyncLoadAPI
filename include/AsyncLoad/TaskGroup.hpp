@@ -69,7 +69,12 @@ public:
     TaskGroup& operator=(const TaskGroup&) = default;
     TaskGroup& operator=(TaskGroup&&) noexcept = default;
 
-    /// Adds a task to the group. If the group is closed, returns `false`.
+    /// Adds a task to the group. Returns whether the addition was successful. It can fail in one of the following cases:
+    /// * the group is closed
+    /// * the task is already present
+    /// * the task is invalid (empty handle)
+    ///
+    /// If the task is already completed, it will still be added successfully.
     bool add(TaskHandle handle);
 
     /// Removes a task from the group. If the group is closed or task is not found, returns `false`.
@@ -77,7 +82,7 @@ public:
 
     /// Cancels all children immediately (calls `cancel` on all handles)
     /// and suppresses the callback of the entire group as well.
-    /// If this group is open, performs no action.
+    /// If this group is not pending (open or already finished), performs no action.
     void cancel();
 
     /// Closes the task group and begins actively tracking all tasks inside. Does nothing if already closed.

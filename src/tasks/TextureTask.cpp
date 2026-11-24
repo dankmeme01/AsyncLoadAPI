@@ -27,13 +27,11 @@ static constexpr size_t STREAMING_DECODE_BUFFER_SIZE = 512 * 1024;
 namespace AsyncLoad {
 
 static bool shouldUsePBO() {
-    static bool should = g_opengl.supportsPBO && getSettingFast<"use-pbos", bool>();
-    return should;
+    return g_opengl.supportsPBO && getSettingFast<"use-pbos", bool>();
 }
 
 static bool shouldUseStreamingDecode() {
-    static bool should = shouldUsePBO() && getSettingFast<"use-streaming-decode", bool>();
-    return should;
+    return shouldUsePBO() && getSettingFast<"use-streaming-decode", bool>();
 }
 
 TextureTask::TextureTask(TextureLoadParams&& params, bool joinable, std::shared_ptr<Control> ctl) : CrtpTask(std::move(ctl)) {
@@ -240,8 +238,6 @@ TaskAdvanceResult TextureTask::advance(bool mainThread) {
             AL_DEBUG_ASSERT(m_image && m_image->hasAlpha && m_image->premultiplied && "m_image must have premultiplied alpha in ImageReady state");
 
             m_imageData = CachedBufferChunk{}; // release buffer
-
-            g_opengl.initialize();
 
             if (shouldUsePBO()) {
                 this->startAsyncPBOLoad();

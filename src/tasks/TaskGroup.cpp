@@ -106,7 +106,9 @@ void detail::GroupControl::updateState() {
 TaskGroup::TaskGroup() : m_ctl(std::make_shared<detail::GroupControl>()) {}
 
 bool TaskGroup::add(TaskHandle handle) {
-    AL_ASSERT(handle);
+    if (!handle) {
+        return false;
+    }
 
     if (m_ctl->m_closed.load(std::memory_order::acquire)) {
         return false;
@@ -117,7 +119,7 @@ bool TaskGroup::add(TaskHandle handle) {
         m_ctl->m_pendingTasks.fetch_add(1, std::memory_order::relaxed);
     }
 
-    return true;
+    return inserted;
 }
 
 bool TaskGroup::remove(TaskHandle handle) {
@@ -136,7 +138,7 @@ bool TaskGroup::remove(TaskHandle handle) {
 void TaskGroup::cancel() {
     while (true) {
         auto current = m_ctl->m_status.load(std::memory_order::acquire);
-        if (current == GroupStatus::Cancelled || current == GroupStatus::Open) {
+        if (current != GroupStatus::Pending) {
             // do nothing
             return;
         }
