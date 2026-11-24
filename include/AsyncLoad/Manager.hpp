@@ -255,7 +255,7 @@ AL_EXPORT(TaskHandle, loadSpritesheetEager, (
 /// on game launch, to avoid lagspikes when using `CCSprite::create` some time later.
 AL_EXPORT(geode::Result<>, preload, (std::string_view path), (path));
 
-/// Gets a CCTexture2D from the texture cache by the given path.
+/// Gets a CCTexture2D from the texture cache by the given path. Not thread-safe.
 /// The path may or may not end with the `.png` extension.
 /// The path does not need to be a full path, it will be resolved using fullPathForFilename.
 AL_EXPORT(geode::Ref<cocos2d::CCTexture2D>, getTexture, (std::string_view path), (path));

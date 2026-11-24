@@ -12,17 +12,44 @@ Most of the routines for loading things in GD are terribly inefficient. On top o
 * No streaming, entire files being read into RAM at once instead of chunk-by-chunk
 * Old & naive APIs that work everywhere but aren't efficient
 
-Async Load API is created for mods that handle a significant volume of textures (but you can use it even if not!) and offers an API that fixes all the issues mentioned above. This mod originally began as Globed icon preloading, extracted to [Blaze](https://github.com/dankmeme01/blaze) and improved, and then extracted into a separate, general-purpose API mod.
+Async Load API is created for mods that handle a significant volume of textures (but you can use it even if not!) and offers an API that sidesteps all the issues mentioned above. This mod originally began as Globed icon preloading, extracted to [Blaze](https://github.com/dankmeme01/blaze) and improved, and then extracted into a separate, general-purpose API mod.
 
-## Design
+## How to use
 
-When it comes to loading textures and spritesheets, the mod takes a fully async approach. You tell the mod to load a specific texture and a callback is called once it's done. As little work as possible is done on caller (and main) thread, lag spikes are minimized:
+> ![NOTE]
+> The mod itself does nothing on its own for the user - it's a purely API mod made to be utilized by other mods. Below are the instructions on how to use it in another mod.
+
+Add the mod as a dependency in your `mod.json`:
+```json
+"dependencies": {
+    "dankmeme.async-load-api": ">=1.0.0"
+}
+```
+
+If you prefer to not require the mod, you can add it as an optional dependency. Beware that some API functions will be disabled.
+```json
+"dependencies": {
+    "dankmeme.async-load-api": {
+        "version": ">=1.0.0",
+        "required": false
+    }
+}
+```
+
+Then you will be able to include the mod's headers:
+```cpp
+#include <AsyncLoad/Manager.hpp>
+```
+
+## Examples
+
+When it comes to loading textures and spritesheets, the mod takes a fully async approach. You tell the mod to load a specific texture and a callback is called **on main thread** once it's done. As little work as possible is done on caller (and main) thread, lag spikes are minimized:
 
 ```cpp
 AsyncLoad::loadTexture(
     "my-texture.png"_spr,
     [](Result<Ref<CCTexture2D>> result) {
-        if (texture) {
+        if (result) {
             // texture is loaded, you can for example create a CCSprite now:
             CCSprite::createWithTexture(result.unwrap());
 
@@ -59,21 +86,34 @@ group.close([](AsyncLoad::TaskGroupResult result) {
 
 The example above is where this mod shines the most, and allows you to do something impossible in vanilla: instead of sequentially calling `CCTextureCache::addImage`, you enqueue 3 textures to load *at the same time*. Because your computer likely has at least 3 threads, most of the work can be done fully in parallel, and the work ends up finishing ~2-3x faster thanks to parallelizing alone.
 
+## Thread safety
+
+The API is mostly split into two parts:
+
+1. Functions that interact with `cocos2d-x` directly are typically NOT thread-safe. For example `loadTexture`, `loadSpritesheet`, `getTexture` or `preload` need to read or write to the shared texture or sprite frame caches. Typically, functions like this have a note in their doc comment saying "this is not thread safe" or "this uses a shared cache", so it's easy to know.
+2. All other functions should be considered **thread-safe**. For example `submitTextureLoad`, `fullPathForFilename`, `getFileData`, `getMappedFile`, `fileExists`, `loadFont`, `RawImage` class, `parseSpriteFrames` and all functions in `Task`/`TaskGroup` except `wait`. Most of those are specifically designed to use no internal state (or a thread-safe state), so they can be called from any thread at any time.
+
 ## Features
 
 This is a list of what Async Load does, and what cocos2d-x doesn't do or does much worse:
 
 * Memory-mapped IO for lazy reading of files on all platforms
-* Incremental PNG decoder via `libspng` (not on iOS)
+* Incremental PNG decoder via `libspng` for much lower memory usage (not on iOS)
 * Pool of worker threads that handle tasks
+* Convenient task groups, making it easy to track progress of multiple texture/sheet loads
 * Thread-safety: many lower-level calls like `getFileData`, `fullPathForFilename`, `submitTextureLoad` are fully thread-safe
 * Use of OpenGL PBOs (and other modern features) for asynchronous GL texture creation (on supported devices)
 * Use of SIMD where applicable, for performance increase on modern CPUs
+* In-flight texture load deduplication - if two mods try loading the same texture, all the work is done only once
 * Fast parser of `.plist` spritesheets using pugixml (~9x faster, non-Apple)
-* Blazingly fast of binary `.plist` spritesheets using `NSPropertyListSerialization` (Apple)
+* Blazingly fast parsing of binary `.plist` spritesheets using `NSPropertyListSerialization` (Apple)
 * Texture Loader-style merging of other spritesheets with same name
 
 ## Roadmap
 
 * Finish AsyncSprite, maybe parity with LazySprite
 * Async SimplePlayer & PlayerObject
+
+## Credits
+
+* [Dasshu](https://github.com/DasshuDev/) - for making the logo!
